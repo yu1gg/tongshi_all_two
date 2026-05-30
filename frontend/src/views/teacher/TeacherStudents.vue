@@ -1,25 +1,45 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { getStudents, type Student } from '@/api/teacher'
 import { getClasses, type ClassInfo } from '@/api/class'
 import { getAnnouncements, getCompletionReport, type Announcement, type CompletionReport } from '@/api/announcement'
 
 const students = ref<Student[]>([])
+const route = useRoute()
 const classes = ref<ClassInfo[]>([])
 const announcements = ref<Announcement[]>([])
 const loading = ref(true)
 const activeTab = ref('students')
 const selectedClassId = ref<number | null>(null)
 
+// 分页
+const currentPage = ref(1)
+const pageSize = ref(20)
+const total = ref(0)
+
 onMounted(async () => {
   try {
-    const [s, c, a] = await Promise.all([getStudents(), getClasses(), getAnnouncements()])
-    students.value = s
+    const [s, c, a] = await Promise.all([
+      getStudents(undefined, currentPage.value, pageSize.value),
+      getClasses(),
+      getAnnouncements(),
+    ])
+    students.value = s.items
+    total.value = s.total
     classes.value = c
     announcements.value = a
+    if (route.query.tab === 'tasks') {
+      activeTab.value = 'tasks'
+      const taskId = Number(route.query.task_id)
+      if (Number.isFinite(taskId) && taskId > 0) {
+        selectedAnnouncementId.value = taskId
+        await loadReport(taskId)
+      }
+    }
   } catch {
-    ElMessage.error('学生数据加载失败，请稍后重试')
+    ElMessage.error('学生成绩加载失败，请稍后重试')
   } finally {
     loading.value = false
   }
@@ -30,15 +50,23 @@ const searchQuery = ref('')
 async function loadStudents() {
   loading.value = true
   try {
-    students.value = await getStudents(selectedClassId.value || undefined)
+    const res = await getStudents(selectedClassId.value || undefined, currentPage.value, pageSize.value)
+    students.value = res.items
+    total.value = res.total
   } catch {
-    ElMessage.error('学生数据加载失败，请稍后重试')
+    ElMessage.error('学生成绩加载失败，请稍后重试')
   } finally {
     loading.value = false
   }
 }
 
 function handleClassChange() {
+  currentPage.value = 1
+  loadStudents()
+}
+
+function handlePageChange(page: number) {
+  currentPage.value = page
   loadStudents()
 }
 
@@ -74,7 +102,7 @@ function handleAnnouncementChange(val: number | null) {
 // 导出 loading 状态
 const exporting = ref(false)
 
-// 导出学生数据为 Excel
+// 导出学生成绩为 Excel
 async function exportExcel() {
   if (exporting.value) return
   exporting.value = true
@@ -82,8 +110,8 @@ async function exportExcel() {
     // 从 localStorage 获取认证 token（与现有下载逻辑保持一致）
     const token = localStorage.getItem('auth_token')
     const url = selectedClassId.value
-      ? `/api/v1/teacher/students/export?class_id=${selectedClassId.value}`
-      : '/api/v1/teacher/students/export'
+      ? `/api/teacher/students/export?class_id=${selectedClassId.value}`
+      : '/api/teacher/students/export'
     const res = await fetch(url, {
       headers: { Authorization: `Bearer ${token}` },
     })
@@ -91,7 +119,7 @@ async function exportExcel() {
     const blob = await res.blob()
     const disposition = res.headers.get('Content-Disposition') ?? ''
     const match = disposition.match(/filename\*=UTF-8''(.+)/)
-    const filename = match?.[1] ? decodeURIComponent(match[1]) : '学生数据.xlsx'
+    const filename = match?.[1] ? decodeURIComponent(match[1]) : '学生成绩.xlsx'
     const link = document.createElement('a')
     link.href = URL.createObjectURL(blob)
     link.download = filename
@@ -108,7 +136,7 @@ async function exportExcel() {
 <template>
   <div class="students-page">
     <div class="page-header">
-      <h1>学生数据</h1>
+      <h1>学生成绩</h1>
       <div class="tab-bar">
         <button class="tab-btn" :class="{ active: activeTab === 'students' }" @click="activeTab = 'students'">学生列表</button>
         <button class="tab-btn" :class="{ active: activeTab === 'tasks' }" @click="activeTab = 'tasks'">任务完成</button>
@@ -126,7 +154,7 @@ async function exportExcel() {
           style="width: 220px"
           @change="handleClassChange"
         >
-          <el-option v-for="cls in classes" :key="cls.id" :label="`${cls.major} · ${cls.name}`" :value="cls.id" />
+          <el-option v-for="cls in classes" :key="cls.id" :label="`${cls.course_name} · ${cls.name}`" :value="cls.id" />
         </el-select>
         <el-input
           v-model="searchQuery"
@@ -135,7 +163,7 @@ async function exportExcel() {
           style="width: 240px"
           clearable
         />
-        <span class="filter-count">共 {{ filteredStudents.length }} 名学生</span>
+        <span class="filter-count">共 {{ total }} 名学生</span>
         <el-button
           type="primary"
           :loading="exporting"
@@ -173,7 +201,18 @@ async function exportExcel() {
       </el-table>
 
       <div v-if="!loading && filteredStudents.length === 0" class="empty-state">
-        暂无学生数据，请先导入学生或创建班级。
+        暂无学生成绩，请先导入学生或创建班级。
+      </div>
+
+      <div v-if="total > pageSize" class="pagination-wrap">
+        <el-pagination
+          v-model:current-page="currentPage"
+          :page-size="pageSize"
+          :total="total"
+          layout="prev, pager, next"
+          background
+          @current-change="handlePageChange"
+        />
       </div>
     </template>
 
@@ -210,11 +249,11 @@ async function exportExcel() {
         </div>
         <div class="report-stats">
           <div class="report-stat">
-            <span class="stat-num">{{ reportData.completed_students }}</span>
+            <span class="stat-num">{{ reportData.completed_count }}</span>
             <span class="stat-label">已完成</span>
           </div>
           <div class="report-stat">
-            <span class="stat-num warn">{{ reportData.total_students - reportData.completed_students }}</span>
+            <span class="stat-num warn">{{ reportData.total_students - reportData.completed_count }}</span>
             <span class="stat-label">未完成</span>
           </div>
           <div class="report-stat">
@@ -223,7 +262,7 @@ async function exportExcel() {
           </div>
         </div>
         <el-progress
-          :percentage="reportData.total_students > 0 ? Math.round(reportData.completed_students / reportData.total_students * 100) : 0"
+          :percentage="reportData.total_students > 0 ? Math.round(reportData.completed_count / reportData.total_students * 100) : 0"
           :stroke-width="10"
           color="var(--color-primary)"
           style="margin-bottom: var(--space-lg)"
@@ -233,6 +272,15 @@ async function exportExcel() {
           <el-table :data="reportData.incomplete_students" stripe style="width: 100%">
             <el-table-column prop="id" label="学号" width="120" />
             <el-table-column prop="name" label="姓名" width="120" />
+            <el-table-column prop="class_name" label="班级" min-width="140" />
+          </el-table>
+        </div>
+        <div v-if="reportData.per_class?.length" class="per-class">
+          <h4 class="incomplete-title">分班小计</h4>
+          <el-table :data="reportData.per_class" stripe style="width: 100%">
+            <el-table-column prop="class_name" label="班级" min-width="140" />
+            <el-table-column prop="total" label="总人数" width="100" />
+            <el-table-column prop="completed" label="已完成" width="100" />
           </el-table>
         </div>
         <div v-else class="all-done">所有学生已完成</div>
@@ -379,5 +427,11 @@ async function exportExcel() {
   color: #10b981;
   font-weight: 600;
   font-size: 1rem;
+}
+
+.pagination-wrap {
+  display: flex;
+  justify-content: center;
+  margin-top: var(--space-xl);
 }
 </style>

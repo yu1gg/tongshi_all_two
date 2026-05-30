@@ -14,14 +14,18 @@ const rejectReason = ref('')
 const imagePreviewVisible = ref(false)
 const previewImage = ref('')
 
+// 分页
+const currentPage = ref(1)
+const pageSize = ref(20)
+const total = ref(0)
+const statusFilter = ref<string | null>(null)
+
 const statusMap: Record<string, { label: string; type: 'warning' | 'success' | 'danger' }> = {
   pending: { label: '待审', type: 'warning' },
   approved: { label: '通过', type: 'success' },
   rejected: { label: '驳回', type: 'danger' },
 }
 
-const pendingCount = computed(() => projects.value.filter(p => p.status === 'pending').length)
-const approvedCount = computed(() => projects.value.filter(p => p.status === 'approved').length)
 const imageList = computed(() => {
   if (!selectedProject.value) return []
   if (selectedProject.value.images && selectedProject.value.images.length > 0) {
@@ -30,21 +34,45 @@ const imageList = computed(() => {
   return selectedProject.value.image_url ? [resolveFileUrl(selectedProject.value.image_url)] : []
 })
 const materialsSummary = computed(() => ({
-  hasReport: Boolean(selectedProject.value?.report_url),
+  hasReport: Boolean(selectedProject.value?.report_url || selectedProject.value?.report_file_id),
   imageCount: imageList.value.length,
   hasVideo: Boolean(selectedProject.value?.video_url),
   hasLink: Boolean(selectedProject.value?.link_url),
 }))
 
+const reportPreviewUrl = computed(() => {
+  const p = selectedProject.value
+  if (!p) return ''
+  if (p.report_file_id) return resolveFileUrl(`/api/files/${p.report_file_id}`)
+  return resolveFileUrl(p.report_url)
+})
+
 onMounted(async () => {
+  await loadProjects()
+})
+
+async function loadProjects() {
+  loading.value = true
   try {
-    projects.value = await getAllProjects()
+    const res = await getAllProjects(statusFilter.value || undefined, currentPage.value, pageSize.value)
+    projects.value = res.items
+    total.value = res.total
   } catch {
     ElMessage.error('作品数据加载失败，请稍后重试')
   } finally {
     loading.value = false
   }
-})
+}
+
+function handlePageChange(page: number) {
+  currentPage.value = page
+  loadProjects()
+}
+
+function handleStatusChange() {
+  currentPage.value = 1
+  loadProjects()
+}
 
 function openDetail(project: Project) {
   selectedProject.value = project
@@ -66,9 +94,9 @@ async function handleApprove() {
       { type: 'warning' },
     )
     await approveProject(selectedProject.value.id)
-    selectedProject.value.status = 'approved'
     drawerVisible.value = false
     ElMessage.success('已通过')
+    loadProjects()
   } catch (error) {
     if (error !== 'cancel' && error !== 'close') {
       ElMessage.error('审核失败，请稍后重试')
@@ -91,9 +119,9 @@ async function handleReject() {
       { type: 'warning' },
     )
     await rejectProject(selectedProject.value.id, reason)
-    projects.value = projects.value.filter(item => item.id !== selectedProject.value?.id)
     drawerVisible.value = false
     ElMessage.success('已驳回')
+    loadProjects()
   } catch (error) {
     if (error !== 'cancel' && error !== 'close') {
       ElMessage.error('驳回失败，请稍后重试')
@@ -128,8 +156,19 @@ async function handleBatchDownload() {
     </div>
 
     <div class="status-summary">
-      <span class="summary-item">待审 <strong>{{ pendingCount }}</strong></span>
-      <span class="summary-item">通过 <strong>{{ approvedCount }}</strong></span>
+      <el-select
+        v-model="statusFilter"
+        placeholder="全部状态"
+        clearable
+        size="default"
+        style="width: 140px"
+        @change="handleStatusChange"
+      >
+        <el-option label="全部状态" :value="null" />
+        <el-option label="待审" value="pending" />
+        <el-option label="通过" value="approved" />
+      </el-select>
+      <span class="filter-count">共 {{ total }} 条</span>
     </div>
 
     <el-table :data="projects" stripe style="width: 100%" v-loading="loading">
@@ -139,7 +178,7 @@ async function handleBatchDownload() {
       <el-table-column prop="date" label="提交时间" width="120" />
       <el-table-column label="材料" width="200">
         <template #default="{ row }">
-          <span class="material-meta">PDF {{ row.report_url ? '已上传' : '未上传' }}</span>
+          <span class="material-meta">PDF {{ row.report_url || row.report_file_id ? '已上传' : '未上传' }}</span>
           <span class="material-meta">图片 {{ row.images?.length || (row.image_url ? 1 : 0) }} 张</span>
         </template>
       </el-table-column>
@@ -159,6 +198,17 @@ async function handleBatchDownload() {
 
     <div v-if="!loading && projects.length === 0" class="empty-state">
       <p>当前没有待审核或已通过的作品。</p>
+    </div>
+
+    <div v-if="total > pageSize" class="pagination-wrap">
+      <el-pagination
+        v-model:current-page="currentPage"
+        :page-size="pageSize"
+        :total="total"
+        layout="prev, pager, next"
+        background
+        @current-change="handlePageChange"
+      />
     </div>
 
     <el-drawer v-model="drawerVisible" title="作品详情" size="640px">
@@ -192,13 +242,13 @@ async function handleBatchDownload() {
 
         <div class="detail-section">
           <label>课程报告</label>
-          <div v-if="selectedProject.report_url" class="pdf-preview">
+          <div v-if="reportPreviewUrl" class="pdf-preview">
             <div class="pdf-actions">
-              <a :href="resolveFileUrl(selectedProject.report_url)" target="_blank" rel="noopener" class="detail-link">
+              <a :href="reportPreviewUrl" target="_blank" rel="noopener" class="detail-link">
                 新开查看 PDF
               </a>
             </div>
-            <iframe :src="resolveFileUrl(selectedProject.report_url)" title="PDF 预览" class="pdf-frame"></iframe>
+            <iframe :src="reportPreviewUrl" title="PDF 预览" class="pdf-frame"></iframe>
           </div>
           <p v-else class="empty-inline">学生未上传 PDF 报告。</p>
         </div>
@@ -420,6 +470,17 @@ async function handleBatchDownload() {
   padding: var(--space-3xl) 0;
   color: var(--color-text-muted);
   font-size: 0.9rem;
+}
+
+.filter-count {
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+}
+
+.pagination-wrap {
+  display: flex;
+  justify-content: center;
+  margin-top: var(--space-xl);
 }
 
 @media (max-width: 768px) {

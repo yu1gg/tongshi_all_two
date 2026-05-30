@@ -41,18 +41,26 @@ http.interceptors.response.use(
   (response) => {
     const { code, message } = response.data
     if (code !== 0) {
-      ElMessage.error(message || '请求失败')
-      // 401 清除登录状态
+      // 401 清除登录状态，跳转登录
       if (code === 401) {
         localStorage.removeItem('auth_user')
         localStorage.removeItem('auth_token')
         window.location.href = '/login'
+        return Promise.reject(new Error(message || '登录已过期'))
       }
+      ElMessage.error(message || '请求失败')
       return Promise.reject(new Error(message))
     }
     return response.data.data
   },
   (error) => {
+    // HTTP 401（FastAPI/Starlette 层面返回的，非 BusinessException）
+    if (error.response?.status === 401) {
+      localStorage.removeItem('auth_user')
+      localStorage.removeItem('auth_token')
+      window.location.href = '/login'
+      return Promise.reject(new Error('登录已过期'))
+    }
     const message = getErrorMessage(error)
     ElMessage.error(message)
     return Promise.reject(new Error(message))

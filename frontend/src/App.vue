@@ -1,17 +1,24 @@
 <script setup lang="ts">
-import { RouterView } from 'vue-router'
+import { computed } from 'vue'
+import { RouterView, useRoute } from 'vue-router'
 import AppHeader from './components/AppHeader.vue'
 import AppFooter from './components/AppFooter.vue'
 import BackToTop from './components/BackToTop.vue'
+
+const route = useRoute()
+const useTransition = computed(() => !route.path.startsWith('/admin') && !route.path.startsWith('/teacher'))
 </script>
 
 <template>
   <AppHeader />
   <main>
     <RouterView v-slot="{ Component }">
-      <Transition name="page-fade" mode="out-in">
-        <component :is="Component" />
-      </Transition>
+      <template v-if="useTransition">
+        <Transition name="page-fade" mode="out-in">
+          <component :is="Component" />
+        </Transition>
+      </template>
+      <component v-else :is="Component" />
     </RouterView>
   </main>
   <AppFooter />

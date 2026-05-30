@@ -29,16 +29,28 @@ def sync_project_images(project: Project, image_urls: list[str], image_file_ids:
     project.image_url = image_urls[0] if image_urls else ""
 
 
-def list_approved_projects(db: Session):
-    return db.query(Project).filter(Project.status == "approved").order_by(Project.date.desc()).all()
+def list_approved_projects(db: Session, page: int = None, page_size: int = None):
+    query = db.query(Project).filter(Project.status == "approved").order_by(Project.date.desc())
+    total = query.count()
+    if page and page_size:
+        projects = query.offset((page - 1) * page_size).limit(page_size).all()
+    else:
+        projects = query.all()
+    return projects, total
 
 
 def get_project(db: Session, project_id: int):
     return db.query(Project).filter(Project.id == project_id).first()
 
 
-def get_user_projects(db: Session, user_id: str):
-    return db.query(Project).filter(Project.author_id == user_id).order_by(Project.date.desc()).all()
+def get_user_projects(db: Session, user_id: str, page: int = None, page_size: int = None):
+    query = db.query(Project).filter(Project.author_id == user_id).order_by(Project.date.desc())
+    total = query.count()
+    if page and page_size:
+        projects = query.offset((page - 1) * page_size).limit(page_size).all()
+    else:
+        projects = query.all()
+    return projects, total
 
 
 def create_project(db: Session, user_id: str, data: dict):

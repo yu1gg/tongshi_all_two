@@ -2,7 +2,7 @@
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from fastapi import Depends
+from fastapi import Depends, Request
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
 from passlib.context import CryptContext
@@ -16,7 +16,7 @@ from app.schemas.common import AuthUser
 
 pwd_context = CryptContext(
     schemes=["pbkdf2_sha256", "bcrypt"], deprecated="auto")
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/token")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/token", auto_error=False)
 
 
 def verify_password(plain: str, hashed: str) -> bool:
@@ -41,9 +41,16 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
 
 
 async def get_current_user(
-    token: str = Depends(oauth2_scheme),
+    request: Request,
+    token: str | None = Depends(oauth2_scheme),
     db: Session = Depends(get_db),
 ) -> AuthUser:
+    # 回退：Authorization header 无 token 时，从 ?token= query 参数读取
+    # 支持 <a> / <iframe> / <img> 等无法携带自定义请求头的场景
+    if not token:
+        token = request.query_params.get("token")
+    if not token:
+        raise BusinessException(401, "无效的认证凭据")
     try:
         payload = jwt.decode(token, settings.secret_key,
                              algorithms=[settings.algorithm])

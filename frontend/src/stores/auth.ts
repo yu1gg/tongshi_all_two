@@ -10,9 +10,32 @@ export interface User {
   needs_password_change?: boolean
 }
 
+function isTokenExpired(token: string): boolean {
+  try {
+    const parts = token.split('.')
+    if (parts.length < 2) return true
+    const payload = JSON.parse(atob(parts[1]!))
+    if (!payload.exp) return false
+    // exp 是秒级时间戳，提前 10 秒判定过期避免临界请求失败
+    return payload.exp * 1000 < Date.now() + 10_000
+  } catch {
+    return true
+  }
+}
+
 export const useAuthStore = defineStore('auth', () => {
   const storedUser = localStorage.getItem('auth_user')
-  const user = ref<User | null>(storedUser ? JSON.parse(storedUser) : null)
+  const storedToken = localStorage.getItem('auth_token')
+
+  // 启动时检查 token 是否过期，过期则清除
+  if (storedToken && isTokenExpired(storedToken)) {
+    localStorage.removeItem('auth_user')
+    localStorage.removeItem('auth_token')
+  }
+
+  const user = ref<User | null>(
+    localStorage.getItem('auth_token') ? (storedUser ? JSON.parse(storedUser) : null) : null,
+  )
   const token = ref<string | null>(localStorage.getItem('auth_token'))
 
   const isLoggedIn = computed(() => !!user.value)

@@ -43,16 +43,23 @@ export interface ProjectPayload {
   image_file_ids?: number[]
 }
 
-export function getProjects() {
-  return http.get<any, Project[]>('/projects')
+export interface PaginatedProjects {
+  items: Project[]
+  total: number
+  page: number
+  page_size: number
+}
+
+export function getProjects(page = 1, pageSize = 12) {
+  return http.get<any, PaginatedProjects>('/projects', { params: { page, page_size: pageSize } })
 }
 
 export function getProject(id: number) {
   return http.get<any, Project>(`/projects/${id}`)
 }
 
-export function getMyProjects() {
-  return http.get<any, Project[]>('/projects/mine')
+export function getMyProjects(page = 1, pageSize = 12) {
+  return http.get<any, PaginatedProjects>('/projects/mine', { params: { page, page_size: pageSize } })
 }
 
 export function createProject(data: ProjectPayload) {

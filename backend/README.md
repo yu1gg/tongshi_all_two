@@ -29,15 +29,18 @@ backend/
 │   │       ├── announcement_routes.py  # 公告/任务发布、已读/完成追踪
 │   │       ├── portfolio_routes.py     # 学生成长档案（雷达图+统计）
 │   │       ├── upload_routes.py # 通用文件上传（含魔数校验）
-│   │       └── file_routes.py   # 统一文件访问 GET /api/files/{file_id}
+│   │       ├── file_routes.py   # 统一文件访问 GET /api/files/{file_id}
+│   │       ├── admin_routes.py  # 管理员：教师账号 CRUD + 批量导入 + 密码重置
+│   │       ├── profile_routes.py# 个人中心：错题本 + 收藏作品
+│   │       └── showcase_routes.py # 悟页面图文内容：管理员 CRUD + 公开只读
 │   │
 │   ├── services/                 # 业务逻辑层
-│   │   ├── auth_service.py       # 登录认证、注册
+│   │   ├── auth_service.py       # 登录认证、注册、忘记密码
 │   │   ├── chapter_service.py    # 章节查询 + 进度计算
 │   │   ├── material_service.py   # 资料 CRUD
 │   │   ├── question_service.py   # 题目 CRUD + Excel 导入 + 课程管理
-│   │   ├── quiz_service.py       # 答题批改 + 进度更新 + 统计
-│   │   ├── project_service.py    # 作品 CRUD + 点赞 + 审核
+│   │   ├── quiz_service.py       # 答题批改 + 进度更新 + 统计 + 错题本
+│   │   ├── project_service.py    # 作品 CRUD + 点赞 + 审核 + 收藏列表
 │   │   ├── teacher_service.py    # 教师仪表盘统计 + 学生数据
 │   │   ├── class_service.py      # 班级 CRUD + 学生注册 + Excel 导入
 │   │   ├── announcement_service.py     # 公告/任务 CRUD + 未读计数
@@ -49,21 +52,21 @@ backend/
 │   │   └── file_service.py       # 文件元数据写入、URL 构建、记录解析
 │   │
 │   ├── models/
-│   │   └── entities.py           # 所有 SQLAlchemy ORM 模型集中定义（17 张表，含 StoredFile）
+│   │   └── entities.py           # 所有 SQLAlchemy ORM 模型集中定义（18 张表，含 StoredFile、ShowcaseItem）
 │   │
 │   ├── schemas/
 │   │   └── common.py             # 所有 Pydantic 请求/响应 Schema 集中定义
 │   │
 │   ├── core/
 │   │   ├── config.py             # 读取 .env 配置（含存储后端配置）
-│   │   ├── security.py           # JWT 签发/校验 + 密码哈希 + 角色依赖
+│   │   ├── security.py           # JWT 签发/校验 + 密码哈希 + 角色依赖（student/teacher/admin）
 │   │   ├── exceptions.py         # 自定义业务异常
 │   │   ├── response.py           # 统一响应格式 {"code": 0, "data": ..., "message": "ok"}
 │   │   └── upload_validation.py  # 文件上传安全校验（扩展名 + 魔数双重校验）
 │   │
 │   └── db/
 │       ├── session.py            # SQLAlchemy 引擎 + 会话工厂
-│       └── schema_compat.py      # 旧库字段自动补齐（含 stored_files 表 + teacher_id 字段）
+│       └── schema_compat.py      # 旧库字段自动补齐（含 stored_files 表 + teacher_id 字段 + needs_password_change 列）
 │
 ├── migrations/
 │   ├── env.py                    # Alembic 迁移环境（自动读 .env 数据库配置）
@@ -72,7 +75,7 @@ backend/
 ├── tests/
 │   ├── conftest.py               # 测试夹具：SQLite 内存库 + TestClient + 种子数据
 │   ├── test_auth.py              # 集成测试：认证、章节、答题
-│   ├── test_integration_bugfixes.py  # 回归测试：存储、上传、业务修复
+│   ├── test_integration_bugfixes.py  # 回归测试：存储、上传、文件预览、业务修复
 │   └── test_schema_compat.py     # 数据库结构兼容性测试
 │
 ├── docs/
@@ -163,13 +166,14 @@ Client 请求
 
 - JWT（HS256），token 有效期 `ACCESS_TOKEN_EXPIRE_MINUTES`（默认 7 天）
 - 密码存储：`pbkdf2_sha256` 加密
-- 角色：`student`（学生）和 `teacher`（教师），通过 `require_role("teacher")` 依赖注入控制
+- 角色：`student`（学生）、`teacher`（教师）、`admin`（管理员），通过 `require_role()` 依赖注入控制
+- 首次登录教师强制修改密码（`needs_password_change` 标记）
 
-### 数据库表（16 张）
+### 数据库表（18 张）
 
 | 表名 | 用途 |
 |------|------|
-| `users` | 用户（学生/教师），id=学号/工号 |
+| `users` | 用户（学生/教师/管理员），id=学号/工号，含 `needs_password_change` |
 | `classes` | 班级（含 `teacher_id` 归属） |
 | `student_class_enrollment` | 学生-班级注册关系 |
 | `courses` | 课程（含 `teacher_id` 归属） |
@@ -185,6 +189,8 @@ Client 请求
 | `announcement_reads` | 公告已读记录 |
 | `task_completions` | 任务完成记录 |
 | `activity_events` | 课程活动时间线 |
+| `stored_files` | 文件元数据（存储后端、桶、路径、原始名称） |
+| `showcase_items` | 悟页面图文展示内容（section、标题、封面、排序） |
 
 ### 开发约定
 
@@ -204,7 +210,7 @@ cd backend
 python -m pytest tests/ -v
 ```
 
-测试覆盖认证、章节、答题、数据库兼容性、教师数据隔离等核心链路，使用 SQLite 内存数据库（无需 MySQL）。
+测试覆盖认证、章节、答题、数据库兼容性、文件存储、浏览器文件预览、教师数据隔离等核心链路，使用 SQLite 内存数据库（无需 MySQL）。
 
 ---
 
@@ -228,13 +234,13 @@ alembic upgrade head
 
 ## 文件存储配置
 
-支持两种存储后端：`local`（默认，兼容历史）和 `s3`（SeaweedFS / 任意 S3 兼容网关）。
+支持两种存储后端：`local`（兼容历史 `uploads/`）和 `s3`（SeaweedFS / 任意 S3 兼容网关）。当前开发运行配置使用 `STORAGE_BACKEND=s3`，业务数据使用 MySQL，真实文件内容保存在 SeaweedFS，`stored_files` 表只保存元数据。
 
 在 `.env` 中配置：
 
 ```env
-# 存储后端：local 或 s3
-STORAGE_BACKEND=local
+# 存储后端：local 或 s3；当前开发环境建议使用 s3
+STORAGE_BACKEND=s3
 
 # 本地存储目录（仅 local 模式使用）
 LOCAL_UPLOAD_DIR=backend/uploads
@@ -249,9 +255,11 @@ S3_REGION=us-east-1
 S3_FORCE_PATH_STYLE=true
 ```
 
-本地接入 SeaweedFS 时，`S3_BUCKET_PUBLIC` 和 `S3_BUCKET_PRIVATE` 需要提前在 S3 网关中手动创建；当前项目不会在启动时自动建桶。
+本地接入 SeaweedFS 时，`S3_BUCKET_PUBLIC` 和 `S3_BUCKET_PRIVATE` 需要提前在 S3 网关中创建。Windows 启动脚本在 `STORAGE_BACKEND=s3` 时会检查 `S3_ENDPOINT`，不可达时尝试用固定路径的 `weed.exe mini` 拉起 SeaweedFS。
 
-**统一文件访问路由：** `GET /api/files/{file_id}`，自动根据 `StoredFile` 记录分发到本地或 S3 存储。
+**统一文件访问路由：** `GET /api/files/{file_id}`，自动根据 `StoredFile` 记录分发到本地或 S3 存储。该路由支持 `Range` 请求并返回 `206 Partial Content`，用于浏览器直接预览视频和 PDF。
+
+**资料文件关联：** 教师端资料上传会保存上传接口返回的 `file_id`，`materials.file_id` 指向 `stored_files.id`。前端仍通过 `/api/files/{file_id}` 访问，不直接暴露 SeaweedFS 对象地址。
 
 **历史兼容：** `/uploads/...` 静态文件挂载仍然保留，旧 URL 继续可用。
 

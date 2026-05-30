@@ -8,13 +8,31 @@ const router = useRouter()
 const projects = ref<Project[]>([])
 const loading = ref(true)
 
+// 分页
+const currentPage = ref(1)
+const pageSize = ref(12)
+const total = ref(0)
+
 onMounted(async () => {
+  await loadProjects()
+})
+
+async function loadProjects() {
+  loading.value = true
   try {
-    projects.value = await getProjects()
+    const res = await getProjects(currentPage.value, pageSize.value)
+    projects.value = res.items
+    total.value = res.total
   } finally {
     loading.value = false
   }
-})
+}
+
+function handlePageChange(page: number) {
+  currentPage.value = page
+  loadProjects()
+  window.scrollTo({ top: 0, behavior: 'smooth' })
+}
 </script>
 
 <template>
@@ -98,6 +116,17 @@ onMounted(async () => {
             </div>
           </div>
         </div>
+
+        <div v-if="total > pageSize" class="pagination-wrap">
+          <el-pagination
+            v-model:current-page="currentPage"
+            :page-size="pageSize"
+            :total="total"
+            layout="prev, pager, next"
+            background
+            @current-change="handlePageChange"
+          />
+        </div>
       </div>
     </section>
 
@@ -178,6 +207,12 @@ onMounted(async () => {
 .gallery-header p {
   font-size: 0.95rem;
   color: var(--color-text-secondary);
+}
+
+.pagination-wrap {
+  display: flex;
+  justify-content: center;
+  margin-top: var(--space-2xl);
 }
 
 .projects-grid {

@@ -182,12 +182,6 @@ async function handleFirstLoginChange() {
           </div>
 
           <p class="admin-hint">教师账号请联系系统管理员分配</p>
-
-          <div class="demo-hint">
-            <p>测试账号：</p>
-            <p>学生：2025001 / 123456</p>
-            <p>教师：T001 / 123456</p>
-          </div>
         </div>
       </div>
     </div>
@@ -354,16 +348,6 @@ async function handleFirstLoginChange() {
   margin-top: var(--space-lg);
   font-size: 0.8rem;
   color: var(--color-text-muted);
-}
-
-.demo-hint {
-  margin-top: var(--space-xl);
-  padding: var(--space-md);
-  background: var(--color-bg-alt);
-  border-radius: var(--radius-sm);
-  font-size: 0.75rem;
-  color: var(--color-text-muted);
-  line-height: 1.6;
 }
 
 .form-footer {

@@ -90,7 +90,7 @@ cd backend
 py -m pytest tests/ -v
 ```
 
-测试使用 SQLite 内存数据库（无需 MySQL），覆盖认证、结构兼容、存储、业务修复回归（共 39 个测试）。
+测试使用 SQLite 内存数据库（无需 MySQL），覆盖认证、结构兼容、存储、文件预览、业务修复回归。
 
 ---
 
@@ -99,36 +99,36 @@ py -m pytest tests/ -v
 ### 后端 — 分层架构：Routes → Services → Models
 
 - `backend/main.py` — FastAPI 应用入口，CORS、静态文件挂载、全局异常处理
-- `backend/app/api/v1/routes/` — 12 个路由模块，全部挂载在 `/api` 前缀下（含 `file_routes.py` 统一文件访问）
+- `backend/app/api/v1/routes/` — 15 个路由模块，全部挂载在 `/api` 前缀下（含 `file_routes.py` 统一文件访问、`admin_routes.py` 管理员、`profile_routes.py` 个人中心、`showcase_routes.py` 悟页面）
 - `backend/app/services/` — 12+ 个业务逻辑服务模块（含 `storage_service.py`、`storage_local.py`、`storage_s3.py`、`file_service.py`）
-- `backend/app/models/entities.py` — 所有 17 个 SQLAlchemy ORM 模型集中在一个文件（含 `StoredFile`）
+- `backend/app/models/entities.py` — 所有 18 个 SQLAlchemy ORM 模型集中在一个文件（含 `StoredFile`、`ShowcaseItem`）
 - `backend/app/schemas/common.py` — 所有 Pydantic 请求/响应 Schema 集中在一个文件
 - `backend/app/core/` — 配置（读取 `.env`）、JWT/密码安全、统一响应格式、自定义异常、文件上传校验
 - `backend/app/db/session.py` — SQLAlchemy 引擎 + 会话工厂
 - `backend/app/db/schema_compat.py` — 旧库字段自动补齐（排课字段、教师归属字段、stored_files 表等）
-- `backend/tests/` — 集成测试（conftest.py + 3 个测试文件，39 个测试覆盖认证、兼容性、存储、业务修复回归）
+- `backend/tests/` — 集成测试（conftest.py + 3 个测试文件，覆盖认证、兼容性、存储、文件预览、业务修复回归）
 
 **统一响应格式：** 所有接口返回 `{"code": 0, "data": ..., "message": "ok"}`（成功）或 `{"code": <错误码>, "data": null, "message": "..."}`（失败）。HTTP 状态码始终为 200。
 
 **数据库：** MySQL（数据库名 `tongshi`），通过 `backend/.env` 配置连接串 `mysql+pymysql://`。SQLite 仅用于测试内存库，不作为业务运行时数据库。数据库迁移使用 Alembic（`alembic.ini` + `migrations/`）。
 
-**文件存储：** 支持 `local`（默认，兼容历史 `uploads/`）和 `s3`（SeaweedFS / S3 兼容网关）两种后端。统一文件访问路由 `GET /api/files/{file_id}`，由 `StoredFile` 元数据记录自动分发。上传接口自动做魔数校验（PDF/ZIP/PNG/JPEG/GIF/WebP）。
+**文件存储：** 支持 `local`（兼容历史 `uploads/`）和 `s3`（SeaweedFS / S3 兼容网关）两种后端。当前开发运行配置使用 `STORAGE_BACKEND=s3`，统一文件访问路由 `GET /api/files/{file_id}` 由 `StoredFile` 元数据记录自动分发，并支持 `Range` 请求用于浏览器预览视频和 PDF。上传接口自动做魔数校验（PDF/ZIP/PNG/JPEG/GIF/WebP）。
 
 **数据库结构兼容：** `backend/app/db/schema_compat.py` 在后端启动时自动补齐旧表缺失字段（排课字段、教师归属字段等），避免旧库升级后报错。
 
 ### 前端 — Vue 3 单页应用
 
 - `frontend/src/api/http.ts` — Axios 实例，JWT 拦截器（从 localStorage 读取 token），401 自动跳转登录
-- `frontend/src/api/*.ts` — 12 个类型化 API 模块，对应后端各业务域
+- `frontend/src/api/*.ts` — 15 个类型化 API 模块，对应后端各业务域（含 `admin.ts`、`profile.ts`、`showcase.ts`）
 - `frontend/src/stores/auth.ts` — Pinia 认证状态管理（登录/注册/登出），JWT 持久化到 localStorage
-- `frontend/src/router/index.ts` — 20+ 路由，`beforeEach` 鉴权守卫 + 教师角色校验
+- `frontend/src/router/index.ts` — 20+ 路由，`beforeEach` 鉴权守卫 + 教师/管理员角色校验 + 首次登录强制改密
 - `frontend/src/views/` — 页面组件（Composition API + Element Plus）
-- `frontend/src/views/teacher/` — 教师端子页面（布局 + 7 个视图）
+- `frontend/src/views/teacher/` — 教师端子页面（布局 + 8 个视图，含 `TeacherCourses.vue`）
 - `frontend/src/views/content/` — VideoPlayer 和 PdfViewer 组件
 
-### 数据库表（17 张）
+### 数据库表（18 张）
 
-`users`、`classes`、`student_class_enrollment`、`courses`、`chapters`、`materials`、`questions`、`quiz_attempts`、`student_progress`、`projects`、`project_images`、`project_likes`、`announcements`、`announcement_reads`、`task_completions`、`activity_events`、`stored_files`
+`users`（含 `needs_password_change`）、`classes`、`student_class_enrollment`、`courses`、`chapters`、`materials`、`questions`、`quiz_attempts`、`student_progress`、`projects`、`project_images`、`project_likes`、`announcements`、`announcement_reads`、`task_completions`、`activity_events`、`stored_files`、`showcase_items`
 
 ---
 
@@ -183,8 +183,8 @@ HTTP 状态码始终为 200，通过 `code` 区分成功/失败。
 
 ### 存储架构
 
-- **配置开关**：`.env` 中 `STORAGE_BACKEND=local|s3`
-- **统一入口**：`GET /api/files/{file_id}` 自动分发到对应存储
+- **配置开关**：`.env` 中 `STORAGE_BACKEND=local|s3`，当前开发运行配置为 `s3`
+- **统一入口**：`GET /api/files/{file_id}` 自动分发到对应存储，并支持 `Range` 分段访问
 - **历史兼容**：`/uploads/...` 静态挂载保留，旧 URL 继续可用
 - **设计文档**：`docs/superpowers/specs/2026-05-24-multi-storage-collaboration-design.md`
 

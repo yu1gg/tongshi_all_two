@@ -3,7 +3,7 @@ import type { Project } from './project'
 
 export interface TeacherStats {
   total_students: number
-  published_chapters: number
+  my_courses: number
   pending_reviews: number
   weekly_exercises: number
 }
@@ -19,18 +19,27 @@ export interface Student {
   accuracy: number
 }
 
+export interface PaginatedResult<T> {
+  items: T[]
+  total: number
+  page: number
+  page_size: number
+}
+
 export function getTeacherStats() {
   return http.get<any, TeacherStats>('/teacher/stats')
 }
 
-export function getStudents(classId?: number) {
-  return http.get<any, Student[]>('/teacher/students', {
-    params: classId ? { class_id: classId } : undefined,
-  })
+export function getStudents(classId?: number, page = 1, pageSize = 20) {
+  const params: Record<string, any> = { page, page_size: pageSize }
+  if (classId) params.class_id = classId
+  return http.get<any, PaginatedResult<Student>>('/teacher/students', { params })
 }
 
-export function getAllProjects(status?: string) {
-  return http.get<any, Project[]>('/teacher/projects', { params: status ? { status } : {} })
+export function getAllProjects(status?: string, page = 1, pageSize = 20) {
+  const params: Record<string, any> = { page, page_size: pageSize }
+  if (status) params.status = status
+  return http.get<any, PaginatedResult<Project>>('/teacher/projects', { params })
 }
 
 export function approveProject(projectId: number) {

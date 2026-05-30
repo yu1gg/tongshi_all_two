@@ -19,12 +19,10 @@ onMounted(async () => {
   loading.value = true
   loadError.value = false
   try {
-    const [showcase, projects] = await Promise.all([getShowcase(), getProjects()])
+    const [showcase, projectRes] = await Promise.all([getShowcase(), getProjects()])
     showcaseData.value = showcase || {}
     // 仅展示前 6 条已通过审核的作品
-    studentProjects.value = (projects || [])
-      .filter((p) => p.status === 'approved')
-      .slice(0, 6)
+    studentProjects.value = (projectRes?.items || []).slice(0, 6)
   } catch {
     loadError.value = true
   } finally {
