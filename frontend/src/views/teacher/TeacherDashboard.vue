@@ -7,26 +7,26 @@ import { getTeacherStats } from '@/api/teacher'
 const router = useRouter()
 
 const stats = ref([
-  { label: '总学生数', value: '0', color: 'var(--color-learn)' },
-  { label: '我的课程数', value: '0', color: 'var(--color-primary)' },
-  { label: '待审作品', value: '0', color: 'var(--color-create)' },
-  { label: '本周练习量', value: '0', color: 'var(--color-act)' },
+  { label: '总学生数', value: '0', color: '#0e7490' },
+  { label: '我的课程数', value: '0', color: '#2d5a6e' },
+  { label: '待审作品', value: '0', color: '#d97706' },
+  { label: '本周练习量', value: '0', color: '#059669' },
 ])
 
 const quickActions = [
-  { label: '上传资料', desc: '上传视频课件或 PDF 讲义', path: '/teacher/materials', color: 'var(--color-learn)' },
-  { label: '管理题库', desc: '新增、编辑或删除练习题', path: '/teacher/questions', color: 'var(--color-practice)' },
-  { label: '审核作品', desc: '查看并审核学生提交的作品', path: '/teacher/reviews', color: 'var(--color-create)' },
+  { label: '上传资料', desc: '上传视频课件或 PDF 讲义', path: '/teacher/materials', color: '#0e7490' },
+  { label: '管理题库', desc: '新增、编辑或删除练习题', path: '/teacher/questions', color: '#7c3aed' },
+  { label: '审核作品', desc: '查看并审核学生提交的作品', path: '/teacher/reviews', color: '#d97706' },
 ]
 
 onMounted(async () => {
   try {
     const data = await getTeacherStats()
     stats.value = [
-      { label: '总学生数', value: String(data.total_students), color: 'var(--color-learn)' },
-      { label: '我的课程数', value: String(data.my_courses), color: 'var(--color-primary)' },
-      { label: '待审作品', value: String(data.pending_reviews), color: 'var(--color-create)' },
-      { label: '本周练习量', value: String(data.weekly_exercises), color: 'var(--color-act)' },
+      { label: '总学生数', value: String(data.total_students), color: '#0e7490' },
+      { label: '我的课程数', value: String(data.my_courses), color: '#2d5a6e' },
+      { label: '待审作品', value: String(data.pending_reviews), color: '#d97706' },
+      { label: '本周练习量', value: String(data.weekly_exercises), color: '#059669' },
     ]
   } catch {
     ElMessage.error('统计数据加载失败，请稍后重试')
@@ -53,6 +53,7 @@ onMounted(async () => {
         v-for="action in quickActions"
         :key="action.label"
         class="action-card"
+        :style="{ '--action-color': action.color }"
         @click="router.push(action.path)"
       >
         <div class="action-dot" :style="{ background: action.color }"></div>
@@ -128,7 +129,8 @@ onMounted(async () => {
   gap: var(--space-md);
   padding: var(--space-lg);
   background: var(--color-bg-card);
-  border: 1px solid rgba(224, 216, 200, 0.8);
+  border: 1px solid var(--color-border);
+  border-left: 3px solid var(--action-color, var(--color-primary));
   border-radius: var(--radius-md);
   cursor: pointer;
   box-shadow: var(--shadow-sm);
@@ -136,18 +138,16 @@ onMounted(async () => {
 }
 
 .action-card:hover {
-  border-color: var(--color-primary-light);
   box-shadow: var(--shadow-md);
   transform: translateY(-2px);
 }
 
 .action-dot {
-  width: 8px;
-  height: 8px;
+  width: 10px;
+  height: 10px;
   border-radius: 50%;
-  margin-top: 7px;
+  margin-top: 5px;
   flex-shrink: 0;
-  box-shadow: 0 0 0 3px rgba(45, 90, 110, 0.06);
 }
 
 .action-card h3 {
@@ -160,7 +160,7 @@ onMounted(async () => {
 
 .action-card p {
   font-size: 0.8rem;
-  color: var(--color-text-muted);
+  color: var(--color-text-secondary);
 }
 
 @media (max-width: 768px) {
