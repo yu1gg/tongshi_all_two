@@ -15,7 +15,7 @@ export interface AdminPublicCourse {
 export type AdminMaterialPayload = Omit<MaterialCreatePayload, 'course_id'>
 
 export interface AdminQuestionPayload {
-  type: 'choice' | 'fill'
+  type: 'choice' | 'fill' | 'multi_choice'
   stem: string
   options: string[]
   answer: string

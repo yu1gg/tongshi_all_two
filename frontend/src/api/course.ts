@@ -19,7 +19,10 @@ export interface CourseListResult {
 }
 
 export function getCourses() {
-  return http.get<any, Course[]>('/courses')
+  return http.get<any, Course[] | CourseListResult>('/courses').then(data => {
+    if (Array.isArray(data)) return data
+    return data.courses
+  })
 }
 
 export function getCourseDetail(id: number) {

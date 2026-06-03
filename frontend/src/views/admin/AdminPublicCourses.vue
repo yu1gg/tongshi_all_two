@@ -47,7 +47,7 @@ const materialForm = ref({
 const showQuestionDialog = ref(false)
 const editingQuestionId = ref<number | null>(null)
 const questionForm = ref({
-  type: 'choice' as 'choice' | 'fill',
+  type: 'choice' as 'choice' | 'fill' | 'multi_choice',
   stem: '',
   optionsText: '',
   answer: '',
@@ -260,6 +260,10 @@ async function saveQuestion() {
     ElMessage.warning('选择题请至少填写一个选项')
     return
   }
+  if (questionForm.value.type === 'multi_choice' && options.length === 0) {
+    ElMessage.warning('多选题请至少填写一个选项')
+    return
+  }
   saving.value = true
   try {
     const payload = {
@@ -440,13 +444,14 @@ onMounted(() => fetchCourses())
         <el-form-item label="题型" required>
           <el-select v-model="questionForm.type" style="width: 160px">
             <el-option label="选择题" value="choice" />
+            <el-option label="多选题" value="multi_choice" />
             <el-option label="填空题" value="fill" />
           </el-select>
         </el-form-item>
         <el-form-item label="题干" required>
           <el-input v-model="questionForm.stem" type="textarea" :rows="3" placeholder="请输入题干" />
         </el-form-item>
-        <el-form-item v-if="questionForm.type === 'choice'" label="选项">
+        <el-form-item v-if="questionForm.type === 'choice' || questionForm.type === 'multi_choice'" label="选项">
           <el-input v-model="questionForm.optionsText" type="textarea" :rows="4" placeholder="每行一个选项，例如：A. 图灵" />
         </el-form-item>
         <el-form-item label="答案" required>

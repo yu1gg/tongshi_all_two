@@ -23,6 +23,7 @@ from app.services.question_service import (
     get_course_questions, create_course, add_public_course, update_course, delete_course,
     get_course_detail, import_questions_from_excel, list_courses,
 )
+from app.services.course_response_service import build_course_detail, build_course_list
 
 router = APIRouter(prefix="/questions", tags=["questions"])
 
@@ -83,6 +84,11 @@ def remove_question(question_id: int, db: Session = Depends(get_db), current_use
 
 @router.get("/courses", summary="课程列表", description="获取所有课程")
 def get_courses(db: Session = Depends(get_db), current_user: AuthUser = Depends(get_current_user)):
+    data = build_course_list(db, current_user)
+    if current_user.role == "student" and isinstance(data, dict) and data.get("hint") is None:
+        return success(data["courses"])
+    return success(data)
+
     if current_user.role == "teacher":
         courses = list_courses(db, current_user.id)
         return success([{
@@ -165,6 +171,7 @@ def get_course(
     detail = get_course_detail(db, course_id, teacher_id)
     if not detail:
         raise BusinessException(404, "课程不存在")
+    return success(build_course_detail(db, detail, current_user))
     course, material_count, question_count, class_count = detail
     return success({
         "id": course.id,
@@ -200,9 +207,12 @@ def _build_question_template(question_type: str) -> bytes:
         ws.append(["choice", "示例课程", "图灵测试由谁提出？", "A. 图灵|B. 冯·诺依曼|C. 乔布斯|D. 爱因斯坦", "A", "图灵提出了图灵测试。"])
     elif question_type == "fill":
         ws.append(["fill", "示例课程", "中国的首都是哪里？", "", "北京", "填空题直接填写答案关键词。"])
+    elif question_type == "multi_choice":
+        ws.append(["multi_choice", "示例课程", "以下哪些是编程语言？", "A. Python|B. Java|C. HTML|D. C++", "ABD", "HTML 是标记语言，不是编程语言。"])
     else:
         ws.append(["choice", "示例课程", "图灵测试由谁提出？", "A. 图灵|B. 冯·诺依曼|C. 乔布斯|D. 爱因斯坦", "A", "图灵提出了图灵测试。"])
         ws.append(["fill", "示例课程", "中国的首都是哪里？", "", "北京", "填空题直接填写答案关键词。"])
+        ws.append(["multi_choice", "示例课程", "以下哪些是编程语言？", "A. Python|B. Java|C. HTML|D. C++", "ABD", "HTML 是标记语言，不是编程语言。"])
     buffer = BytesIO()
     wb.save(buffer)
     return buffer.getvalue()
@@ -223,7 +233,7 @@ def _download_template_response(template_type: str):
 
 
 @router.get("/import/template", summary="下载题目导入模板", description="教师端：下载 Excel 批量导入模板（中文表头，支持选择题和填空题）")
-def download_question_template(template_type: str = Query("all", pattern="^(all|choice|fill)$"), current_user: AuthUser = Depends(require_role("teacher"))):
+def download_question_template(template_type: str = Query("all", pattern="^(all|choice|fill|multi_choice)$"), current_user: AuthUser = Depends(require_role("teacher"))):
     return _download_template_response(template_type)
 
 
@@ -235,6 +245,11 @@ def download_choice_question_template(current_user: AuthUser = Depends(require_r
 @router.get("/import/template/fill", summary="下载填空题导入模板", description="教师端：下载填空题 Excel 模板")
 def download_fill_question_template(current_user: AuthUser = Depends(require_role("teacher"))):
     return _download_template_response("fill")
+
+
+@router.get("/import/template/multi_choice", summary="下载多选题导入模板", description="教师端：下载多选题 Excel 模板")
+def download_multi_choice_question_template(current_user: AuthUser = Depends(require_role("teacher"))):
+    return _download_template_response("multi_choice")
 
 
 @router.post("/import", summary="Excel 批量导入题目", description="教师端：上传 Excel 批量导入题目（.xlsx，表头：题型/课程名称/题干/选项/答案/解析）")

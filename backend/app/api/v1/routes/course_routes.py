@@ -27,6 +27,7 @@ from app.services.question_service import (
     get_course_detail,
     add_public_course,
 )
+from app.services.course_response_service import build_course_detail, build_course_list
 from app.models.entities import Class, Course, StudentClassEnrollment
 
 router = APIRouter(prefix="/courses", tags=["courses"])
@@ -34,6 +35,11 @@ router = APIRouter(prefix="/courses", tags=["courses"])
 
 @router.get("", summary="课程列表", description="获取所有课程（学生按班级关联，教师按归属）")
 def get_courses(db: Session = Depends(get_db), current_user: AuthUser = Depends(get_current_user)):
+    data = build_course_list(db, current_user)
+    if current_user.role == "student" and isinstance(data, dict) and data.get("hint") is None:
+        return success(data["courses"])
+    return success(data)
+
     if current_user.role == "teacher":
         courses = list_courses(db, current_user.id)
         return success([{
@@ -112,6 +118,7 @@ def get_course(
     detail = get_course_detail(db, course_id, teacher_id)
     if not detail:
         raise BusinessException(404, "课程不存在")
+    return success(build_course_detail(db, detail, current_user))
     course, material_count, question_count, class_count = detail
     return success({
         "id": course.id,

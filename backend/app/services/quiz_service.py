@@ -12,7 +12,13 @@ def submit_answer(db: Session, user_id: str, question_id: int, user_answer: str)
     if not question:
         return None
 
-    is_correct = user_answer.strip().upper() == question.answer.strip().upper()
+    if question.type == "multi_choice":
+        # 多选题：将用户答案和标准答案各自排序后比较
+        user_sorted = "".join(sorted(user_answer.strip().upper()))
+        correct_sorted = "".join(sorted(question.answer.strip().upper()))
+        is_correct = user_sorted == correct_sorted
+    else:
+        is_correct = user_answer.strip().upper() == question.answer.strip().upper()
     attempt = QuizAttempt(
         user_id=user_id,
         question_id=question_id,

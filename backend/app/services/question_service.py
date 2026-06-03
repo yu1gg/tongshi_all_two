@@ -208,9 +208,9 @@ def import_questions_from_excel(db: Session, rows: list[dict], teacher_id: str):
             option_list = [x.strip() for x in options.split("|") if x.strip()] if options else []
             answer = str(row.get("答案", row.get("answer", ""))).strip()
             explanation = str(row.get("解析", row.get("explanation", ""))).strip()
-            if q_type not in {"choice", "fill"}:
-                raise BusinessException(400, "题型必须为 choice 或 fill")
-            if q_type == "choice" and not option_list:
+            if q_type not in {"choice", "fill", "multi_choice"}:
+                raise BusinessException(400, "题型必须为 choice、fill 或 multi_choice")
+            if q_type in {"choice", "multi_choice"} and not option_list:
                 raise BusinessException(400, "选择题必须填写选项")
             q = Question(type=q_type, course_id=course.id, stem=stem,
                          options=option_list, answer=answer, explanation=explanation)
