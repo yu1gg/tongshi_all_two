@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
 import { getCourseQuestions, type Question } from '@/api/question'
 import { submitAnswer as apiSubmitAnswer } from '@/api/quiz'
 import { loadQuizDraft, saveQuizDraft, clearQuizDraft } from '@/composables/useQuizDraft'
@@ -19,15 +18,33 @@ const announcementId = computed(() => {
   const raw = route.query.announcement_id as string | undefined
   return raw ? Number(raw) : null
 })
+const randomCount = computed(() => {
+  const raw = route.query.random as string | undefined
+  return raw ? Number(raw) : null
+})
 
 const mockQuestions = ref<Question[]>([])
 const loading = ref(true)
 
+// Fisher-Yates 洗牌
+function shuffle<T>(arr: T[]): T[] {
+  const a = [...arr]
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1))
+    ;[a[i], a[j]] = [a[j], a[i]]
+  }
+  return a
+}
+
 watch(courseId, async () => {
   loading.value = true
   try {
-    const ids = questionIds.value
-    mockQuestions.value = await getCourseQuestions(courseId.value, ids?.length ? ids.join(',') : undefined)
+    let qs = await getCourseQuestions(courseId.value, questionIds.value?.join(','))
+    // 自由练习：随机选取指定数量题目
+    if (randomCount.value && !questionIds.value) {
+      qs = shuffle(qs).slice(0, randomCount.value)
+    }
+    mockQuestions.value = qs
   } finally {
     loading.value = false
   }
@@ -89,7 +106,7 @@ const canSubmit = computed(() => {
   if (!q) return false
   if (q.type === 'multi_choice') return selectedOptions.value.size > 0
   if (q.type === 'choice') return !!selectedOption.value
-  return true // 填空题允许空答案提交
+  return fillAnswer.value.trim().length > 0
 })
 
 const optionLabels = ['A', 'B', 'C', 'D']
@@ -109,6 +126,7 @@ async function submitAnswer() {
     if (!selectedOption.value) return
     userAnswer = selectedOption.value
   } else {
+    if (!fillAnswer.value.trim()) return
     userAnswer = fillAnswer.value.trim()
   }
   const result = await apiSubmitAnswer(q.id, userAnswer)
@@ -185,15 +203,6 @@ function toggleMultiOption(label: string) {
 }
 
 const correctCount = computed(() => results.value.filter(r => r === true).length)
-const unansweredCount = computed(() => results.value.filter(r => r === null).length)
-
-function handleSubmitAll() {
-  if (unansweredCount.value > 0) {
-    ElMessage.warning(`还有 ${unansweredCount.value} 道题目未完成，无法提交`)
-    return
-  }
-  ElMessage.success('全部完成！')
-}
 
 /** 保存当前答题草稿到 localStorage */
 function persistDraft() {
@@ -377,13 +386,7 @@ function persistDraft() {
               </svg>
               上一题
             </button>
-            <button
-              v-if="currentIndex === totalQuestions - 1"
-              class="nav-btn submit-all"
-              :disabled="results.some(r => r === null)"
-              @click="handleSubmitAll"
-            >提交</button>
-            <button v-else class="nav-btn" @click="nextQuestion">
+            <button class="nav-btn" :disabled="currentIndex === totalQuestions - 1" @click="nextQuestion">
               下一题
               <svg width="16" height="16" viewBox="0 0 20 20" fill="none">
                 <path d="M4 10h12m-4-4l4 4-4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>

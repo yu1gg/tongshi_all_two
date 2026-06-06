@@ -62,9 +62,6 @@ const filteredCourses = computed(() => {
               <button class="card-link materials" @click="router.push(`/learn/course/${course.id}`)">
                 资料
               </button>
-              <button class="card-link questions" @click="router.push(`/practice/quiz/${course.id}`)">
-                题库
-              </button>
             </div>
           </div>
         </div>
@@ -224,17 +221,6 @@ const filteredCourses = computed(() => {
 
 .card-link.materials:hover {
   opacity: 0.9;
-}
-
-.card-link.questions {
-  color: var(--color-practice);
-  background: var(--color-practice-bg);
-  border: 1px solid var(--color-practice);
-}
-
-.card-link.questions:hover {
-  color: white;
-  background: var(--color-practice);
 }
 
 .empty-state {
