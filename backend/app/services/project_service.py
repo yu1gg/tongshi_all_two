@@ -6,7 +6,8 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import BusinessException
-from app.models.entities import Project, ProjectImage, ProjectLike, User
+from app.models.entities import Class, Course, Project, ProjectImage, ProjectLike, StudentClassEnrollment, User
+from app.services.access_control_service import student_can_access_course
 from app.services.notification_service import create_project_review_notification
 
 logger = logging.getLogger(__name__)
@@ -29,6 +30,25 @@ def sync_project_images(project: Project, image_urls: list[str], image_file_ids:
         project.images.append(ProjectImage(
             image_url=image_url, sort_order=index, file_id=file_id))
     project.image_url = image_urls[0] if image_urls else ""
+
+
+def _student_can_submit_to_course(db: Session, user_id: str, course_id: int) -> bool:
+    return student_can_access_course(db, user_id, course_id)
+
+
+def _teacher_can_review_project(db: Session, teacher_id: str, project: Project) -> bool:
+    if project.course_id is not None:
+        return db.query(Course.id).filter(
+            Course.id == project.course_id,
+            Course.created_by == teacher_id,
+        ).first() is not None
+
+    return db.query(StudentClassEnrollment.id).join(
+        Class, Class.id == StudentClassEnrollment.class_id
+    ).filter(
+        StudentClassEnrollment.user_id == project.author_id,
+        Class.created_by == teacher_id,
+    ).first() is not None
 
 
 def list_approved_projects(db: Session, page: int = None, page_size: int = None):
@@ -67,8 +87,13 @@ def get_user_projects(db: Session, user_id: str, page: int = None, page_size: in
 
 def create_project(db: Session, user_id: str, data: dict):
     user = db.query(User).filter(User.id == user_id).first()
+    course_id = data.get("course_id")
+    if not course_id or not _student_can_submit_to_course(db, user_id, course_id):
+        raise BusinessException(403, "只能选择自己已加入的课程提交作品")
+
     project = Project(
         author_id=user_id,
+        course_id=course_id,
         major=user.major if user else "",
         date=datetime.now().strftime("%Y-%m-%d"),
         title=data.get("title"),
@@ -101,7 +126,12 @@ def update_project(db: Session, project_id: int, user_id: str, data: dict):
     if project.status != "rejected":
         raise BusinessException(400, "当前作品不可重新提交")
 
+    course_id = data.get("course_id")
+    if not course_id or not _student_can_submit_to_course(db, user_id, course_id):
+        raise BusinessException(403, "只能选择自己已加入的课程提交作品")
+
     project.title = data.get("title", project.title)
+    project.course_id = course_id
     project.description = data.get("description", "")
     project.tags = data.get("tags") or []
     project.video_url = data.get("video_url", "")
@@ -156,9 +186,11 @@ def toggle_like(db: Session, user_id: str, project_id: int):
         return {"liked": True, "likes": project.likes}
 
 
-def approve_project(db: Session, project_id: int):
+def approve_project(db: Session, project_id: int, teacher_id: str | None = None):
     project = get_project(db, project_id)
     if not project:
+        return None
+    if teacher_id and not _teacher_can_review_project(db, teacher_id, project):
         return None
     project.status = "approved"
     project.reject_reason = ""
@@ -168,9 +200,11 @@ def approve_project(db: Session, project_id: int):
     return project
 
 
-def reject_project(db: Session, project_id: int, reason: str):
+def reject_project(db: Session, project_id: int, reason: str, teacher_id: str | None = None):
     project = get_project(db, project_id)
     if not project:
+        return None
+    if teacher_id and not _teacher_can_review_project(db, teacher_id, project):
         return None
     project.status = "rejected"
     project.reject_reason = reason
@@ -181,10 +215,12 @@ def reject_project(db: Session, project_id: int, reason: str):
     return project
 
 
-def delete_project(db: Session, project_id: int):
+def delete_project(db: Session, project_id: int, teacher_id: str | None = None):
     """删除作品及其关联数据"""
     project = get_project(db, project_id)
     if not project:
+        return None
+    if teacher_id and not _teacher_can_review_project(db, teacher_id, project):
         return None
     # 删除关联的点赞记录
     db.query(ProjectLike).filter(ProjectLike.project_id == project_id).delete()
@@ -204,6 +240,11 @@ def format_project(db: Session, p, user_id: str | None = None) -> dict:
     传入 user_id 时返回 is_liked 字段。
     """
     author = db.query(User).filter(User.id == p.author_id).first()
+    course_id = getattr(p, "course_id", None)
+    course_name = ""
+    if course_id:
+        course = getattr(p, "course", None) or db.query(Course).filter(Course.id == course_id).first()
+        course_name = course.name if course else ""
     images = [
         {"id": image.id, "image_url": image.image_url,
             "sort_order": image.sort_order, "file_id": image.file_id}
@@ -225,6 +266,8 @@ def format_project(db: Session, p, user_id: str | None = None) -> dict:
         "title": p.title,
         "author_id": p.author_id,
         "author_name": author.name if author else "",
+        "course_id": course_id,
+        "course_name": course_name,
         "major": p.major,
         "description": p.description,
         "tags": p.tags if hasattr(p, "tags") else [],

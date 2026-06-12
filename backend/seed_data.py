@@ -8,7 +8,7 @@ from app.models.entities import Course, User
 
 # 测试用种子账号：id, name, role, password（需要时取消注释）
 _SEED_USERS: list[tuple[str, str, str, str]] = [
-    # ("admin", "系统管理员", "admin", "admin123456"),
+    ("admin", "系统管理员", "admin", "admin123456"),
     # ("T001", "测试教师", "teacher", "abc123456"),
     # ("2025001", "测试学生一", "student", "abc123456"),
     # ("2025002", "测试学生二", "student", "abc123456"),

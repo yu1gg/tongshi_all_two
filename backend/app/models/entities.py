@@ -137,6 +137,7 @@ class Project(Base):
     title = Column(String(128), nullable=False)
     author_id = Column(String(32), ForeignKey(
         "users.id"), nullable=False, index=True)
+    course_id = Column(Integer, ForeignKey("courses.id"), nullable=True, index=True)
     major = Column(String(64), default="")
     description = Column(Text, default="")
     tags = Column(JSON, default=list)
@@ -155,6 +156,7 @@ class Project(Base):
         "stored_files.id"), nullable=True, index=True)
 
     author = relationship("User", back_populates="projects")
+    course = relationship("Course")
     images = relationship(
         "ProjectImage",
         back_populates="project",

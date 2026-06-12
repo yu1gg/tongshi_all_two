@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { computed, ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useAuthStore } from '@/stores/auth'
 import { getWrongQuestions, getLikedProjects, type WrongQuestion, type LikedProject } from '@/api/profile'
@@ -97,6 +97,34 @@ async function saveSecurityEdit() {
 const wrongQuestions = ref<WrongQuestion[]>([])
 const wrongLoading = ref(false)
 const wrongError = ref('')
+
+const wrongQuestionGroups = computed(() => {
+  const map = new Map<number, { course_id: number; course_name: string; questions: WrongQuestion[] }>()
+  for (const question of wrongQuestions.value) {
+    if (!map.has(question.course_id)) {
+      map.set(question.course_id, {
+        course_id: question.course_id,
+        course_name: question.course_name || '未命名课程',
+        questions: [],
+      })
+    }
+    map.get(question.course_id)!.questions.push(question)
+  }
+  return Array.from(map.values())
+})
+
+function answerLetters(answer: string) {
+  return new Set(answer.split('').map(item => item.trim().toUpperCase()).filter(Boolean))
+}
+
+function isOptionCorrect(q: WrongQuestion, index: number) {
+  return answerLetters(q.answer).has(String.fromCharCode(65 + index))
+}
+
+function isOptionWrong(q: WrongQuestion, index: number) {
+  const letter = String.fromCharCode(65 + index)
+  return answerLetters(q.user_answer).has(letter) && !answerLetters(q.answer).has(letter)
+}
 
 async function loadWrongQuestions() {
   wrongLoading.value = true
@@ -242,6 +270,54 @@ function handleTabChange(name: string) {
             <p>暂无错题，继续保持！</p>
           </div>
           <div v-else class="wrong-list">
+            <el-collapse>
+              <el-collapse-item
+                v-for="course in wrongQuestionGroups"
+                :key="course.course_id"
+                :name="`course-${course.course_id}`"
+              >
+                <template #title>
+                  <span class="course-title">{{ course.course_name }}（{{ course.questions.length }} 题）</span>
+                </template>
+                <el-collapse class="course-questions">
+                  <el-collapse-item
+                    v-for="(q, index) in course.questions"
+                    :key="q.question_id"
+                    :name="q.question_id"
+                  >
+                    <template #title>
+                      <span class="question-title">{{ index + 1 }}. {{ q.stem }}</span>
+                    </template>
+                    <div class="question-detail">
+                      <div class="options-list">
+                        <div
+                          v-for="(opt, i) in q.options"
+                          :key="i"
+                          class="option-item"
+                          :class="{
+                            'option-correct': isOptionCorrect(q, i),
+                            'option-wrong': isOptionWrong(q, i),
+                          }"
+                        >
+                          {{ String.fromCharCode(65 + i) }}. {{ opt }}
+                        </div>
+                      </div>
+                      <div class="answer-row">
+                        <span class="label">我的答案：</span>
+                        <span class="wrong-answer">{{ q.user_answer }}</span>
+                        <span class="label" style="margin-left:16px">正确答案：</span>
+                        <span class="correct-answer">{{ q.answer }}</span>
+                      </div>
+                      <div v-if="q.explanation" class="explanation">
+                        <span class="label">解析：</span>{{ q.explanation }}
+                      </div>
+                    </div>
+                  </el-collapse-item>
+                </el-collapse>
+              </el-collapse-item>
+            </el-collapse>
+          </div>
+          <div v-if="false" class="wrong-list">
             <el-collapse>
               <el-collapse-item
                 v-for="(q, index) in wrongQuestions"
@@ -397,6 +473,16 @@ function handleTabChange(name: string) {
 /* 错题本 */
 .wrong-list {
   width: 100%;
+}
+
+.course-title {
+  font-size: 0.96rem;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.course-questions {
+  margin-left: 8px;
 }
 
 .question-title {

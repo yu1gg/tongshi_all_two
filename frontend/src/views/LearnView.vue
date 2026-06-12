@@ -1,17 +1,20 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { getCourses, type Course } from '@/api/course'
+import { getCourseList, type Course } from '@/api/course'
 
 const router = useRouter()
 const courses = ref<Course[]>([])
 const loading = ref(true)
 const keyword = ref('')
+const courseHint = ref<string | null>(null)
 
 async function loadCourses() {
   loading.value = true
   try {
-    courses.value = await getCourses()
+    const result = await getCourseList()
+    courses.value = result.courses
+    courseHint.value = result.hint
   } finally {
     loading.value = false
   }
@@ -24,6 +27,11 @@ const filteredCourses = computed(() => {
   if (!q) return courses.value
   return courses.value.filter(c => c.name.toLowerCase().includes(q))
 })
+
+const emptyText = computed(() => {
+  if (keyword.value.trim()) return '未找到匹配的课程'
+  return courseHint.value || '暂无课程内容'
+})
 </script>
 
 <template>
@@ -33,7 +41,7 @@ const filteredCourses = computed(() => {
         <div class="hero-inner">
           <div class="hero-icon">学</div>
           <h1>学 · 积累知识</h1>
-          <p>浏览课程资料、课件和题库，按自己的节奏学习。</p>
+          <p>浏览老师为你选择的课程资料，按自己的节奏学习。</p>
         </div>
       </div>
     </section>
@@ -65,9 +73,7 @@ const filteredCourses = computed(() => {
             </div>
           </div>
         </div>
-        <div v-else class="empty-state">
-          {{ keyword ? '未找到匹配的课程' : '暂无课程内容。' }}
-        </div>
+        <div v-else class="empty-state">{{ emptyText }}</div>
       </div>
     </section>
   </div>
@@ -164,26 +170,10 @@ const filteredCourses = computed(() => {
   overflow: hidden;
 }
 
-.course-card::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 3px;
-  height: 100%;
-  background: var(--color-learn);
-  opacity: 0;
-  transition: opacity var(--duration-normal);
-}
-
 .course-card:hover {
   transform: translateY(-3px);
   box-shadow: var(--shadow-lg);
-  border-color: rgba(45, 106, 122, 0.2);
-}
-
-.course-card:hover::before {
-  opacity: 1;
+  border-color: rgba(45, 106, 122, 0.24);
 }
 
 .course-card h3 {

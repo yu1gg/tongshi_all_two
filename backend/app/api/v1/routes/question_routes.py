@@ -100,7 +100,7 @@ def get_courses(
     current_user: AuthUser = Depends(get_current_user),
 ):
     data = build_course_list(db, current_user, keyword)
-    if current_user.role == "student" and isinstance(data, dict) and data.get("hint") is None:
+    if current_user.role == "student" and isinstance(data, dict):
         return success(data["courses"])
     return success(data)
 

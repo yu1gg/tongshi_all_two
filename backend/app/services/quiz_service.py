@@ -1,25 +1,24 @@
-"""Quiz service"""
+"""练习与错题本服务。"""
 from datetime import datetime, timezone
-from sqlalchemy.orm import Session
-from sqlalchemy.orm import joinedload
+
+from sqlalchemy.orm import Session, joinedload
 
 from app.core.exceptions import BusinessException
-from app.models.entities import Class, Question, QuizAttempt, StudentClassEnrollment
-from app.core.timezone_utils import to_beijing_iso, beijing_today
+from app.core.timezone_utils import beijing_today, to_beijing_iso
+from app.models.entities import Class, Course, Question, QuizAttempt, StudentClassEnrollment
+from app.services.access_control_service import student_can_access_course
 from app.services.task_service import get_accessible_assignment, validate_assignment_available
 
 
-def _student_can_access_course(db: Session, user_id: str, course_id: int) -> bool:
-    """校验学生是否加入了题目所属课程。"""
-    return db.query(StudentClassEnrollment).join(
-        Class, Class.id == StudentClassEnrollment.class_id,
-    ).filter(
-        StudentClassEnrollment.user_id == user_id,
-        Class.course_id == course_id,
-    ).first() is not None
 
-
-def submit_answer(db: Session, user_id: str, question_id: int, user_answer: str, role: str = "student", announcement_id: int | None = None):
+def submit_answer(
+    db: Session,
+    user_id: str,
+    question_id: int,
+    user_answer: str,
+    role: str = "student",
+    announcement_id: int | None = None,
+):
     question = db.query(Question).filter(Question.id == question_id).first()
     if not question:
         raise BusinessException(404, "题目不存在")
@@ -32,16 +31,16 @@ def submit_answer(db: Session, user_id: str, question_id: int, user_answer: str,
             question_ids = ann.question_ids if isinstance(ann.question_ids, list) else []
             if question.course_id != ann.course_id or question.id not in question_ids:
                 raise BusinessException(404, "题目不存在")
-        elif not _student_can_access_course(db, user_id, question.course_id):
+        elif not student_can_access_course(db, user_id, question.course_id):
             raise BusinessException(404, "题目不存在")
 
     if question.type == "multi_choice":
-        # 多选题：将用户答案和标准答案各自排序后比较
         user_sorted = "".join(sorted(user_answer.strip().upper()))
         correct_sorted = "".join(sorted(question.answer.strip().upper()))
         is_correct = user_sorted == correct_sorted
     else:
         is_correct = user_answer.strip().upper() == question.answer.strip().upper()
+
     attempt = QuizAttempt(
         user_id=user_id,
         question_id=question_id,
@@ -69,7 +68,6 @@ def get_quiz_history(db: Session, user_id: str, limit: int = 10):
 
     result = []
     for a in attempts:
-        # 利用 ORM relationship 直接访问 Question，避免 N+1 查询
         q = a.question
         result.append({
             "id": a.id,
@@ -85,7 +83,6 @@ def get_quiz_history(db: Session, user_id: str, limit: int = 10):
 
 
 def get_quiz_stats(db: Session, user_id: str):
-    # 先取学生所属课程范围，四个指标统一限定在此范围
     student_course_ids = (
         db.query(Question.course_id)
         .join(Class, Class.course_id == Question.course_id)
@@ -135,11 +132,9 @@ def get_quiz_stats(db: Session, user_id: str):
 
 
 def get_course_quiz_stats(db: Session, user_id: str, course_id: int):
-    # 权限校验：学生必须加入该课程才能查看统计
-    if not _student_can_access_course(db, user_id, course_id):
+    if not student_can_access_course(db, user_id, course_id):
         raise BusinessException(404, "课程不存在或无权限访问")
 
-    # 计算该用户在该课程下的答题统计
     course_question_ids = db.query(Question.id).filter(Question.course_id == course_id)
 
     questions_done = db.query(QuizAttempt).filter(
@@ -163,10 +158,22 @@ def get_course_quiz_stats(db: Session, user_id: str, course_id: int):
 
 
 def get_wrong_questions(db: Session, user_id: str):
-    """错题本：每道题取最近一次答题记录，仅保留仍答错的题"""
+    """每道题取最近一次答题记录，仅保留仍答错且属于当前已加入课程的题。"""
     from sqlalchemy import func as sa_func
 
-    # 子查询：每道题的最新答题记录 id
+    student_course_ids = [
+        row.course_id
+        for row in (
+            db.query(Class.course_id)
+            .join(StudentClassEnrollment, StudentClassEnrollment.class_id == Class.id)
+            .filter(StudentClassEnrollment.user_id == user_id)
+            .distinct()
+            .all()
+        )
+    ]
+    if not student_course_ids:
+        return []
+
     latest_sub = (
         db.query(sa_func.max(QuizAttempt.id).label("max_id"))
         .filter(QuizAttempt.user_id == user_id)
@@ -177,11 +184,15 @@ def get_wrong_questions(db: Session, user_id: str):
     attempts = (
         db.query(QuizAttempt)
         .join(latest_sub, QuizAttempt.id == latest_sub.c.max_id)
+        .join(Question, Question.id == QuizAttempt.question_id)
         .filter(QuizAttempt.is_correct == False)  # noqa: E712
+        .filter(Question.course_id.in_(student_course_ids))
         .options(joinedload(QuizAttempt.question))
         .all()
     )
 
+    courses = db.query(Course).filter(Course.id.in_(student_course_ids)).all()
+    course_names = {course.id: course.name for course in courses}
     result = []
     for a in attempts:
         q = a.question
@@ -190,6 +201,8 @@ def get_wrong_questions(db: Session, user_id: str):
         result.append({
             "question_id": q.id,
             "course_id": q.course_id,
+            "course_name": course_names.get(q.course_id, ""),
+            "type": q.type,
             "stem": q.stem,
             "options": q.options,
             "answer": q.answer,

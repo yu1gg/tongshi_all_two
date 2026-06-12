@@ -4,6 +4,9 @@ from datetime import datetime
 from typing import List, Optional
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+MATERIAL_TYPES = {"video", "pdf", "link"}
+QUESTION_TYPES = {"choice", "fill", "multi_choice"}
+
 
 # ── Auth ────────────────────────────────────────────────────────────────────
 class Token(BaseModel):
@@ -130,6 +133,13 @@ class MaterialCreate(BaseModel):
     size: str = "0 MB"
     file_id: Optional[int] = None
 
+    @field_validator("type")
+    @classmethod
+    def validate_type(cls, value: str) -> str:
+        if value not in MATERIAL_TYPES:
+            raise ValueError("资料类型必须为 video、pdf 或 link")
+        return value
+
 
 # ── Question ────────────────────────────────────────────────────────────────
 class QuestionOut(BaseModel):
@@ -155,6 +165,13 @@ class QuestionCreate(BaseModel):
     answer: str
     explanation: str = ""
 
+    @field_validator("type")
+    @classmethod
+    def validate_type(cls, value: str) -> str:
+        if value not in QUESTION_TYPES:
+            raise ValueError("题型必须为 choice、fill 或 multi_choice")
+        return value
+
 
 class QuestionUpdate(QuestionCreate):
     pass
@@ -175,6 +192,13 @@ class AdminMaterialUpdate(BaseModel):
     size: str = "0 MB"
     file_id: Optional[int] = None
 
+    @field_validator("type")
+    @classmethod
+    def validate_type(cls, value: str) -> str:
+        if value not in MATERIAL_TYPES:
+            raise ValueError("资料类型必须为 video、pdf 或 link")
+        return value
+
 
 class AdminQuestionCreate(BaseModel):
     type: str = "choice"
@@ -182,6 +206,13 @@ class AdminQuestionCreate(BaseModel):
     options: List[str] = []
     answer: str
     explanation: str = ""
+
+    @field_validator("type")
+    @classmethod
+    def validate_type(cls, value: str) -> str:
+        if value not in QUESTION_TYPES:
+            raise ValueError("题型必须为 choice、fill 或 multi_choice")
+        return value
 
 
 class AdminQuestionUpdate(AdminQuestionCreate):
@@ -237,6 +268,8 @@ class ProjectOut(BaseModel):
     title: str
     author_id: str
     author_name: str = ""
+    course_id: Optional[int] = None
+    course_name: str = ""
     major: str = ""
     description: str
     tags: List[str] = []
@@ -255,6 +288,7 @@ class ProjectOut(BaseModel):
 
 
 class ProjectCreate(BaseModel):
+    course_id: int
     title: str = Field(min_length=1)
     description: str = ""
     tags: List[str] = []
@@ -269,6 +303,7 @@ class ProjectCreate(BaseModel):
 
 
 class ProjectUpdate(BaseModel):
+    course_id: int
     title: str = Field(min_length=1)
     description: str = ""
     tags: List[str] = []

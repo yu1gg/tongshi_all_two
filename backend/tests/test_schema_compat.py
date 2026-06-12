@@ -39,13 +39,6 @@ def test_ensure_schema_compatibility_adds_course_anchor_columns():
                 answer VARCHAR(128) NOT NULL
             )
         """))
-        conn.execute(text("""
-            CREATE TABLE student_progress (
-                id INTEGER PRIMARY KEY,
-                user_id VARCHAR(32) NOT NULL
-            )
-        """))
-
     ensure_schema_compatibility(engine)
 
     inspector = inspect(engine)
@@ -53,7 +46,6 @@ def test_ensure_schema_compatibility_adds_course_anchor_columns():
     assert "course_id" in {column["name"] for column in inspector.get_columns("classes")}
     assert "course_id" in {column["name"] for column in inspector.get_columns("materials")}
     assert "course_id" in {column["name"] for column in inspector.get_columns("questions")}
-    assert "course_id" in {column["name"] for column in inspector.get_columns("student_progress")}
 
 
 def test_ensure_schema_compatibility_creates_project_images_table():
@@ -284,3 +276,23 @@ def test_ensure_schema_compatibility_adds_quiz_attempt_announcement_id():
     columns = {column["name"] for column in inspector.get_columns("quiz_attempts")}
 
     assert "announcement_id" in columns
+
+
+def test_ensure_schema_compatibility_adds_project_course_id():
+    """旧库 projects 表应自动补齐 course_id 列。"""
+    engine = create_engine("sqlite:///:memory:")
+    with engine.begin() as conn:
+        conn.execute(text("""
+            CREATE TABLE projects (
+                id INTEGER PRIMARY KEY,
+                title VARCHAR(128) NOT NULL,
+                author_id VARCHAR(32) NOT NULL
+            )
+        """))
+
+    ensure_schema_compatibility(engine)
+
+    inspector = inspect(engine)
+    columns = {column["name"] for column in inspector.get_columns("projects")}
+
+    assert "course_id" in columns

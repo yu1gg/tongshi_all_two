@@ -3,6 +3,8 @@ import http from './http'
 export interface WrongQuestion {
     question_id: number
     course_id: number
+    course_name: string
+    type: string
     stem: string
     options: string[]
     answer: string

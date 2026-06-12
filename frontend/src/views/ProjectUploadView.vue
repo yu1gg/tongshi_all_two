@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { useAuthStore } from '@/stores/auth'
 import { createProject, getProject, updateProject, type Project, type ProjectPayload } from '@/api/project'
+import { getCourseList, type Course } from '@/api/course'
 import { uploadFile } from '@/api/upload'
 
 const router = useRouter()
@@ -13,8 +14,8 @@ const authStore = useAuthStore()
 const form = reactive({
   title: '',
   description: '',
-  videoUrl: '',
   linkUrl: '',
+  courseId: null as number | null,
 })
 
 const tags = ref<string[]>([])
@@ -26,7 +27,10 @@ const reportInput = ref<HTMLInputElement | null>(null)
 const imageInput = ref<HTMLInputElement | null>(null)
 const submitting = ref(false)
 const loading = ref(false)
+const courseLoading = ref(false)
 const editingProject = ref<Project | null>(null)
+const courses = ref<Course[]>([])
+const courseHint = ref<string | null>(null)
 
 const currentUserName = computed(() => authStore.user?.name || '当前用户')
 const currentMajor = computed(() => authStore.user?.major || '未设置')
@@ -87,6 +91,19 @@ function removeNewImage(index: number) {
   imageFiles.value.splice(index, 1)
 }
 
+async function loadCourses() {
+  courseLoading.value = true
+  try {
+    const result = await getCourseList()
+    courses.value = result.courses
+    courseHint.value = result.hint
+  } catch {
+    ElMessage.error('课程列表加载失败，请稍后重试')
+  } finally {
+    courseLoading.value = false
+  }
+}
+
 async function loadProjectForEdit() {
   if (!isEditMode.value) return
 
@@ -107,8 +124,8 @@ async function loadProjectForEdit() {
     editingProject.value = project
     form.title = project.title
     form.description = project.description
-    form.videoUrl = project.video_url || ''
-    form.linkUrl = project.link_url || ''
+    form.linkUrl = project.link_url || project.video_url || ''
+    form.courseId = project.course_id ?? null
     tags.value = [...(project.tags || [])]
     existingImageUrls.value = project.images?.map(item => item.image_url) || (project.image_url ? [project.image_url] : [])
   } catch {
@@ -128,6 +145,12 @@ async function handleSubmit() {
     ElMessage.warning('请填写作品描述')
     return
   }
+
+  if (!form.courseId) {
+    ElMessage.warning('请选择关联课程')
+    return
+  }
+  const selectedCourseId = form.courseId
 
   submitting.value = true
   try {
@@ -149,10 +172,10 @@ async function handleSubmit() {
     }
 
     const payload: ProjectPayload = {
+      course_id: selectedCourseId,
       title: form.title.trim(),
       description: form.description.trim(),
       tags: tags.value,
-      video_url: form.videoUrl.trim() || undefined,
       report_url: reportUrl || undefined,
       image_url: uploadedImageUrls[0] || undefined,
       image_urls: uploadedImageUrls,
@@ -180,7 +203,10 @@ async function handleSubmit() {
 }
 
 onMounted(() => {
-  void loadProjectForEdit()
+  void (async () => {
+    await loadCourses()
+    await loadProjectForEdit()
+  })()
 })
 </script>
 
@@ -213,6 +239,25 @@ onMounted(() => {
             <span class="meta-label">所属专业</span>
             <span class="meta-value">{{ currentMajor }}</span>
           </div>
+        </div>
+
+        <div class="form-group">
+          <label>关联课程 <span class="req">*</span></label>
+          <el-select
+            v-model="form.courseId"
+            :loading="courseLoading"
+            placeholder="请选择作品关联课程"
+            size="large"
+            style="width: 100%"
+          >
+            <el-option
+              v-for="course in courses"
+              :key="course.id"
+              :label="course.name"
+              :value="course.id"
+            />
+          </el-select>
+          <p class="form-hint">{{ courseHint || '只能选择已加入班级对应的课程。' }}</p>
         </div>
 
         <div class="form-group">
@@ -264,13 +309,8 @@ onMounted(() => {
         </div>
 
         <div class="form-group">
-          <label>演示视频链接</label>
-          <el-input v-model="form.videoUrl" placeholder="填写 Bilibili / YouTube 链接" size="large" />
-        </div>
-
-        <div class="form-group">
-          <label>外链地址</label>
-          <el-input v-model="form.linkUrl" placeholder="GitHub 仓库、在线演示等链接" size="large" />
+          <label>作品链接</label>
+          <el-input v-model="form.linkUrl" placeholder="GitHub 仓库、演示视频、在线演示等链接" size="large" />
         </div>
 
         <div class="form-group">
@@ -402,6 +442,12 @@ onMounted(() => {
   font-weight: 600;
   color: var(--color-text);
   margin-bottom: var(--space-sm);
+}
+
+.form-hint {
+  margin-top: var(--space-xs);
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
 }
 
 .req {

@@ -92,11 +92,35 @@ _FORGOT_FAILURES: dict[str, list[datetime]] = {}
 
 _MAX_ATTEMPTS = 5
 _ATTEMPT_WINDOW_MINUTES = 5
+_CLEANUP_INTERVAL_MINUTES = 10
+_LAST_FORGOT_FAILURE_CLEANUP: datetime | None = None
+
+
+def _cleanup_forgot_failures(now: datetime | None = None) -> None:
+    """清理所有已过期的忘记密码失败记录，避免长时间运行时字典膨胀。"""
+    current = now or datetime.now(timezone.utc)
+    cutoff = current - timedelta(minutes=_ATTEMPT_WINDOW_MINUTES)
+    expired_users = []
+    for user_id, attempts in list(_FORGOT_FAILURES.items()):
+        active_attempts = [attempt for attempt in attempts if attempt > cutoff]
+        if active_attempts:
+            _FORGOT_FAILURES[user_id] = active_attempts
+        else:
+            expired_users.append(user_id)
+    for user_id in expired_users:
+        _FORGOT_FAILURES.pop(user_id, None)
 
 
 def _check_and_record_failure(user_id: str) -> int:
     """检查并记录一次失败尝试，返回剩余尝试次数；-1 表示已锁定"""
+    global _LAST_FORGOT_FAILURE_CLEANUP
     now = datetime.now(timezone.utc)
+    if (
+        _LAST_FORGOT_FAILURE_CLEANUP is None
+        or now - _LAST_FORGOT_FAILURE_CLEANUP > timedelta(minutes=_CLEANUP_INTERVAL_MINUTES)
+    ):
+        _cleanup_forgot_failures(now)
+        _LAST_FORGOT_FAILURE_CLEANUP = now
     cutoff = now - timedelta(minutes=_ATTEMPT_WINDOW_MINUTES)
     # 清理过期记录
     attempts = [t for t in _FORGOT_FAILURES.get(user_id, []) if t > cutoff]

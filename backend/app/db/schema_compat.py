@@ -160,9 +160,9 @@ def ensure_schema_compatibility(engine) -> None:
         _add_column_if_missing(
             conn, inspector, "quiz_attempts", "announcement_id", "INTEGER")
         _add_column_if_missing(
-            conn, inspector, "student_progress", "course_id", "INTEGER")
-        _add_column_if_missing(
             conn, inspector, "announcements", "course_id", "INTEGER")
+        _add_column_if_missing(conn, inspector, "projects",
+                               "course_id", "INTEGER")
         _add_column_if_missing(conn, inspector, "projects",
                                "report_file_id", "INTEGER")
         _add_column_if_missing(conn, inspector, "projects",
@@ -224,11 +224,9 @@ def ensure_schema_compatibility(engine) -> None:
         inspector = inspect(conn)
         # classes.major 已从模型删除：直接删列
         _drop_column_if_exists(conn, inspector, "classes", "major")
-        # materials/questions/student_progress 由挂章节改为挂课程：旧 chapter_id 放开为可空
+        # materials/questions 由挂章节改为挂课程：旧 chapter_id 放开为可空
         _make_column_nullable(conn, inspector, "materials", "chapter_id", "INTEGER")
         _make_column_nullable(conn, inspector, "questions", "chapter_id", "INTEGER")
-        _make_column_nullable(
-            conn, inspector, "student_progress", "chapter_id", "INTEGER")
         # announcements.class_id 改为可空（多班级走 announcement_classes 关联表）
         _make_column_nullable(conn, inspector, "announcements", "class_id", "INTEGER")
 

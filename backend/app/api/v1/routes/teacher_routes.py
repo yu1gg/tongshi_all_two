@@ -121,8 +121,8 @@ def get_all_projects(
 
 
 @router.post("/projects/{project_id}/approve", summary="通过作品审核", description="教师端：将指定作品设为审核通过")
-def approve(project_id: int, db: Session = Depends(get_db), _: AuthUser = Depends(require_role("teacher"))):
-    p = approve_project(db, project_id)
+def approve(project_id: int, db: Session = Depends(get_db), current_user: AuthUser = Depends(require_role("teacher"))):
+    p = approve_project(db, project_id, current_user.id)
     if not p:
         raise BusinessException(404, "作品不存在")
     return success()
@@ -135,7 +135,7 @@ def reject(
     db: Session = Depends(get_db),
     current_user: AuthUser = Depends(require_role("teacher")),
 ):
-    p = reject_project(db, project_id, data.reason or "")
+    p = reject_project(db, project_id, data.reason or "", current_user.id)
     if not p:
         raise BusinessException(404, "作品不存在")
     return success()
@@ -147,7 +147,7 @@ def remove_project(
     db: Session = Depends(get_db),
     current_user: AuthUser = Depends(require_role("teacher")),
 ):
-    p = delete_project(db, project_id)
+    p = delete_project(db, project_id, current_user.id)
     if not p:
         raise BusinessException(404, "作品不存在")
     return success()

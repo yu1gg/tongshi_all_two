@@ -12,6 +12,8 @@ export interface Project {
   title: string
   author_id: string
   author_name: string
+  course_id?: number | null
+  course_name?: string
   major: string
   description: string
   tags: string[]
@@ -31,6 +33,7 @@ export interface Project {
 }
 
 export interface ProjectPayload {
+  course_id: number
   title: string
   description: string
   tags: string[]

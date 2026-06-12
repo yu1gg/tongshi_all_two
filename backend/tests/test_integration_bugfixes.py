@@ -3,7 +3,7 @@ import io
 from pathlib import Path
 
 from app.core.security import get_password_hash
-from app.models.entities import Announcement, AnnouncementClass, Class, Course, Material, Project, Question, StoredFile, StudentClassEnrollment, StudentProgress, TaskCompletion, User
+from app.models.entities import Announcement, AnnouncementClass, Class, Course, Material, Project, Question, StoredFile, StudentClassEnrollment, TaskCompletion, User
 from tests.conftest import auth_header
 
 
@@ -42,7 +42,7 @@ class TestTeacherRefactor:
         assert create_data["code"] == 0
 
         list_data = client.get("/api/materials?course_id=1", headers=auth_header(teacher_token)).json()
-        created = next(item for item in list_data["data"] if item["id"] == create_data["data"]["id"])
+        created = next(item for item in list_data["data"]["items"] if item["id"] == create_data["data"]["id"])
         assert created["course_id"] == 1
         assert created["course_name"] == "测试课程"
         assert created["url"] == "/uploads/test-material.pdf"
@@ -240,7 +240,7 @@ class TestTeacherRefactor:
         assert mirrored.stem == "原题干"
 
         list_resp = client.get(f"/api/questions?course_id={copy_id}", headers=auth_header(teacher_token))
-        listed = next(item for item in list_resp.json()["data"] if item["id"] == mirrored.id)
+        listed = next(item for item in list_resp.json()["data"]["items"] if item["id"] == mirrored.id)
         assert listed["source_question_id"] == source_question_id
         assert listed["is_synced"] is True
 
@@ -289,7 +289,7 @@ class TestTeacherRefactor:
         ).one()
 
         list_resp = client.get(f"/api/materials?course_id={copy_id}", headers=auth_header(teacher_token))
-        listed = next(item for item in list_resp.json()["data"] if item["id"] == mirrored.id)
+        listed = next(item for item in list_resp.json()["data"]["items"] if item["id"] == mirrored.id)
         assert listed["source_material_id"] == source_material_id
         assert listed["is_synced"] is True
 
@@ -353,7 +353,7 @@ class TestTeacherRefactor:
         data = resp.json()
 
         assert data["code"] == 0
-        assert data["data"] == {"courses": [], "hint": "你尚未加入任何班级，请联系老师"}
+        assert data["data"] == []
 
     def test_download_multi_choice_question_template(self, client, teacher_token):
         resp = client.get("/api/questions/import/template/multi_choice", headers=auth_header(teacher_token))
@@ -452,6 +452,13 @@ class TestTeacherRefactor:
         assert create_data["code"] == 0
         announcement_id = create_data["data"]["id"]
 
+        answer = client.post(
+            "/api/quiz/submit",
+            json={"question_id": 1, "user_answer": "B", "announcement_id": announcement_id},
+            headers=auth_header(student_token),
+        ).json()
+        assert answer["code"] == 0
+
         client.post(f"/api/announcements/{announcement_id}/complete", headers=auth_header(student_token))
         report = client.get(f"/api/announcements/{announcement_id}/completion-report", headers=auth_header(teacher_token)).json()
 
@@ -459,14 +466,6 @@ class TestTeacherRefactor:
         assert report["data"]["total_students"] == 2
         assert report["data"]["completed_count"] == 1
         assert len(report["data"]["per_class"]) == 2
-
-    def test_quiz_progress_is_course_based(self, client, db_session, student_token):
-        client.post("/api/quiz/submit", json={"question_id": 1, "user_answer": "B"}, headers=auth_header(student_token))
-        progress = db_session.query(StudentProgress).filter(StudentProgress.user_id == "2025001").first()
-
-        assert progress is not None
-        assert progress.course_id == 1
-        assert progress.questions_done == 1
 
     def test_create_material_persists_file_id(self, client, db_session, teacher_token):
         stored = StoredFile(
@@ -498,7 +497,7 @@ class TestTeacherRefactor:
         assert create_resp.json()["code"] == 0
 
         materials = client.get("/api/materials", headers=auth_header(teacher_token)).json()["data"]
-        created = next(item for item in materials if item["id"] == create_resp.json()["data"]["id"])
+        created = next(item for item in materials["items"] if item["id"] == create_resp.json()["data"]["id"])
         assert created["file_id"] == stored.id
         assert created["url"].startswith("/api/files/")
 
@@ -632,6 +631,7 @@ class TestProjectReview:
         resp = client.post(
             "/api/projects",
             json={
+                "course_id": 1,
                 "title": title,
                 "description": "测试描述",
                 "tags": ["AI"],
@@ -695,7 +695,7 @@ class TestProjectLike:
     def _create_project(self, client, student_token, title="点赞测试作品"):
         resp = client.post(
             "/api/projects",
-            json={"title": title, "description": "测试描述", "tags": ["AI"]},
+            json={"course_id": 1, "title": title, "description": "测试描述", "tags": ["AI"]},
             headers=auth_header(student_token),
         )
         assert resp.json()["code"] == 0
@@ -753,7 +753,7 @@ class TestProjectFullFlow:
         # 创建
         create = client.post(
             "/api/projects",
-            json={"title": "完整流程测试", "description": "E2E", "tags": ["AI"]},
+            json={"course_id": 1, "title": "完整流程测试", "description": "E2E", "tags": ["AI"]},
             headers=auth_header(student_token),
         ).json()
         assert create["code"] == 0
@@ -781,7 +781,7 @@ class TestProjectFullFlow:
         # 创建 → 驳回
         create = client.post(
             "/api/projects",
-            json={"title": "驳回重提交测试", "description": "描述", "tags": []},
+            json={"course_id": 1, "title": "驳回重提交测试", "description": "描述", "tags": []},
             headers=auth_header(student_token),
         ).json()
         pid = create["data"]["id"]
@@ -795,7 +795,7 @@ class TestProjectFullFlow:
         # 重新提交
         update = client.put(
             f"/api/projects/{pid}",
-            json={"title": "驳回重提交测试（已修改）", "description": "改好了", "tags": ["AI"], "report_url": ""},
+            json={"course_id": 1, "title": "驳回重提交测试（已修改）", "description": "改好了", "tags": ["AI"], "report_url": ""},
             headers=auth_header(student_token),
         ).json()
         assert update["code"] == 0

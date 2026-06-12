@@ -19,13 +19,17 @@ export interface CourseListResult {
   hint: string | null
 }
 
-export function getCourses(keyword?: string) {
+export function getCourseList(keyword?: string) {
   return http.get<any, Course[] | CourseListResult>('/courses', {
     params: keyword ? { keyword } : undefined,
   }).then(data => {
-    if (Array.isArray(data)) return data
-    return data.courses
+    if (Array.isArray(data)) return { courses: data, hint: null }
+    return data
   })
+}
+
+export function getCourses(keyword?: string) {
+  return getCourseList(keyword).then(data => data.courses)
 }
 
 export function getCoursesPage(params: {

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { getCourses, type Course } from '@/api/course'
+import { getCourseList, type Course } from '@/api/course'
 import { getAnnouncements, type Announcement } from '@/api/announcement'
 import { getCourseQuizStats } from '@/api/quiz'
 
@@ -10,17 +10,24 @@ const courses = ref<Course[]>([])
 const announcements = ref<Announcement[]>([])
 const courseStats = ref<Map<number, { done: number; accuracy: number }>>(new Map())
 const loading = ref(true)
+const courseHint = ref<string | null>(null)
 
 async function loadData() {
   loading.value = true
   try {
-    const [c, a] = await Promise.all([getCourses(), getAnnouncements()])
-    courses.value = c
+    const [courseResult, a] = await Promise.all([getCourseList(), getAnnouncements()])
+    courses.value = courseResult.courses
+    courseHint.value = courseResult.hint
     announcements.value = a
     const statsMap = new Map<number, { done: number; accuracy: number }>()
     await Promise.all(
-      c.filter(co => !co.is_public).map(async (co) => {
-        try { const s = await getCourseQuizStats(co.id); statsMap.set(co.id, { done: s.questions_done, accuracy: s.accuracy }) } catch {}
+      courses.value.map(async (co) => {
+        try {
+          const s = await getCourseQuizStats(co.id)
+          statsMap.set(co.id, { done: s.questions_done, accuracy: s.accuracy })
+        } catch {
+          // 单个课程统计失败不影响课程入口展示。
+        }
       }),
     )
     courseStats.value = statsMap
@@ -31,11 +38,11 @@ async function loadData() {
 
 onMounted(loadData)
 
-const enrolledCourses = computed(() => courses.value.filter(c => !c.is_public))
+const emptyText = computed(() => courseHint.value || '暂无已加入的课程')
 
 const courseAssignmentStats = computed(() => {
   const map = new Map<number, { completed: number; pending: number; expired: number }>()
-  for (const c of enrolledCourses.value) {
+  for (const c of courses.value) {
     const items = announcements.value.filter(a => a.course_id === c.id)
     map.set(c.id, {
       completed: items.filter(a => a.is_completed).length,
@@ -62,7 +69,7 @@ function goToFreePractice(courseId: number) {
         <div class="hero-inner">
           <div class="hero-icon">思</div>
           <h1>思 · 深化理解</h1>
-          <p>完成作业练习或自由选题练习。</p>
+          <p>完成老师发布的作业练习，也可以围绕已加入课程自由练习。</p>
         </div>
       </div>
     </section>
@@ -73,9 +80,9 @@ function goToFreePractice(courseId: number) {
       <section class="section-block">
         <div class="container">
           <h2 class="section-title">作业</h2>
-          <div v-if="enrolledCourses.length === 0" class="empty-hint">暂无已加入的课程</div>
+          <div v-if="courses.length === 0" class="empty-hint">{{ emptyText }}</div>
           <div v-else class="card-grid">
-            <div v-for="c in enrolledCourses" :key="c.id" class="hw-card">
+            <div v-for="c in courses" :key="c.id" class="hw-card">
               <h3>{{ c.name }}</h3>
               <div class="hw-stats">
                 <div class="hw-stat done" @click="goToAssignments(c.id, 'completed')">
@@ -85,7 +92,9 @@ function goToFreePractice(courseId: number) {
                 <div class="hw-stat pending" @click="goToAssignments(c.id, 'pending')">
                   <span class="hw-num">{{ courseAssignmentStats.get(c.id)?.pending ?? 0 }}</span>
                   <span class="hw-label">未完成</span>
-                  <span v-if="(courseAssignmentStats.get(c.id)?.expired ?? 0) > 0" class="hw-expired-tip">含{{ courseAssignmentStats.get(c.id)?.expired }}过期</span>
+                  <span v-if="(courseAssignmentStats.get(c.id)?.expired ?? 0) > 0" class="hw-expired-tip">
+                    含 {{ courseAssignmentStats.get(c.id)?.expired }} 个已过期
+                  </span>
                 </div>
               </div>
             </div>
@@ -96,9 +105,9 @@ function goToFreePractice(courseId: number) {
       <section class="section-block free-section">
         <div class="container">
           <h2 class="section-title">自由练习</h2>
-          <div v-if="enrolledCourses.length === 0" class="empty-hint">暂无已加入的课程</div>
+          <div v-if="courses.length === 0" class="empty-hint">{{ emptyText }}</div>
           <div v-else class="card-grid">
-            <div v-for="c in enrolledCourses" :key="c.id" class="free-card">
+            <div v-for="c in courses" :key="c.id" class="free-card">
               <h3>{{ c.name }}</h3>
               <div class="free-row">
                 <span class="free-stat">已完成 {{ courseStats.get(c.id)?.done ?? 0 }} 次</span>

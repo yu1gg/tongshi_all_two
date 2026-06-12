@@ -28,6 +28,7 @@ const canResubmit = computed(() => {
   if (!project.value) return false
   return project.value.status === 'rejected' && project.value.author_id === authStore.user?.id
 })
+const projectLink = computed(() => project.value?.link_url || project.value?.video_url || '')
 
 onMounted(async () => {
   try {
@@ -134,17 +135,10 @@ function openPreview(image: string) {
           </a>
         </section>
 
-        <section v-if="project.video_url" class="detail-section">
-          <h3>演示视频</h3>
-          <a :href="resolveFileUrl(project.video_url)" target="_blank" rel="noopener" class="video-link">
-            观看演示视频
-          </a>
-        </section>
-
-        <section v-if="project.link_url" class="detail-section">
-          <h3>项目链接</h3>
-          <a :href="resolveFileUrl(project.link_url)" target="_blank" rel="noopener" class="external-link">
-            {{ project.link_url }}
+        <section v-if="projectLink" class="detail-section">
+          <h3 class="project-link-title">作品链接</h3>
+          <a :href="resolveFileUrl(projectLink)" target="_blank" rel="noopener" class="external-link">
+            {{ projectLink }}
           </a>
         </section>
 

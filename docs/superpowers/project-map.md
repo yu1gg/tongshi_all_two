@@ -14,7 +14,7 @@
 User(teacher) -> Course -> Class -> StudentClassEnrollment -> User(student)
 User(teacher) -> Course -> Material
 User(teacher) -> Course -> Question -> QuizAttempt
-User(teacher) -> Course -> StudentProgress
+User(teacher) -> Course -> Project
 Announcement -> AnnouncementClass -> Class
 Announcement -> QuizAttempt(announcement_id) -> TaskCompletion
 ```
@@ -56,8 +56,9 @@ Announcement -> QuizAttempt(announcement_id) -> TaskCompletion
 ## 长期约定
 
 - 不再使用独立章节表、章节 API 或章节页面。
-- 资料、题目、学习进度全部直接挂在课程下。
+- 资料、题目和作品全部直接挂在课程下；答题统计以 `QuizAttempt` 为事实来源。
 - 班级必须归属一门课程。
 - 发布题目可一次选择同一课程下的多个班级。
 - 题目任务练习必须通过任务维度记录 `QuizAttempt.announcement_id`；任务完成和教师完成报告按该任务下每题最新一次答题结果统计。
+- 学生提交作品必须选择自己已加入班级对应的课程；教师只能审核自己课程范围内的作品。
 - 教师只能访问自己创建的课程及其下属班级、资料、题目、学生成绩和作品审核范围。

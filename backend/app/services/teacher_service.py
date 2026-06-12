@@ -1,5 +1,5 @@
 """Teacher service"""
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 from app.models.entities import (
     Announcement,
@@ -34,17 +34,37 @@ def _teacher_student_ids(db: Session, teacher_id: str) -> list[str]:
     ]
 
 
+def _teacher_course_ids(db: Session, teacher_id: str) -> list[int]:
+    return [
+        row.id for row in db.query(Course.id)
+        .filter(Course.created_by == teacher_id)
+        .all()
+    ]
+
+
+def _apply_teacher_project_scope(query, db: Session, teacher_id: str):
+    course_ids = _teacher_course_ids(db, teacher_id)
+    student_ids = _teacher_student_ids(db, teacher_id)
+    filters = []
+    if course_ids:
+        filters.append(Project.course_id.in_(course_ids))
+    if student_ids:
+        filters.append(Project.course_id.is_(None) & Project.author_id.in_(student_ids))
+    if not filters:
+        return query.filter(False)
+    return query.filter(or_(*filters))
+
 
 def get_teacher_stats(db: Session, teacher_id: str):
     student_ids = _teacher_student_ids(db, teacher_id)
     total_students = len(student_ids)
     my_courses = db.query(Course).filter(Course.created_by == teacher_id).count()
     public_courses = db.query(Course).filter(Course.is_public == True).count()
-    pending_reviews_query = db.query(Project).filter(Project.status == "pending")
-    if student_ids:
-        pending_reviews_query = pending_reviews_query.filter(Project.author_id.in_(student_ids))
-    else:
-        pending_reviews_query = pending_reviews_query.filter(False)
+    pending_reviews_query = _apply_teacher_project_scope(
+        db.query(Project).filter(Project.status == "pending"),
+        db,
+        teacher_id,
+    )
     pending_reviews = pending_reviews_query.count()
     weekly_exercises_query = db.query(QuizAttempt)
     if student_ids:
@@ -401,11 +421,7 @@ def list_all_projects(
 ):
     query = db.query(Project)
     if teacher_id:
-        student_ids = _teacher_student_ids(db, teacher_id)
-        if student_ids:
-            query = query.filter(Project.author_id.in_(student_ids))
-        else:
-            query = query.filter(False)
+        query = _apply_teacher_project_scope(query, db, teacher_id)
     if status:
         query = query.filter(Project.status == status)
     if keyword:

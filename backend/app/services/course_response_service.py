@@ -1,7 +1,6 @@
 """课程接口响应组装。"""
 from __future__ import annotations
 
-from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.core.timezone_utils import to_beijing_iso
@@ -41,27 +40,33 @@ def build_course_list(db: Session, current_user: AuthUser, keyword: str | None =
             .filter(StudentClassEnrollment.user_id == current_user.id)
             .all()
         )
-        class_ids = [item.class_id for item in enrollments]
-        if class_ids:
-            classes_with_course = (
-                db.query(Class)
-                .filter(Class.id.in_(class_ids), Class.course_id.isnot(None))
-                .all()
-            )
-            enrolled_course_ids = list({item.course_id for item in classes_with_course})
-        else:
-            enrolled_course_ids = []
+        if not enrollments:
+            return {
+                "courses": [],
+                "hint": "你尚未加入任何班级，请联系老师",
+            }
 
-        # 学生可见：已加入班级的课程 + 所有公共课程
-        query = db.query(Course).filter(
-            or_(Course.id.in_(enrolled_course_ids), Course.is_public == True)
+        class_ids = [item.class_id for item in enrollments]
+        classes_with_course = (
+            db.query(Class)
+            .filter(Class.id.in_(class_ids), Class.course_id.isnot(None))
+            .all()
         )
+        enrolled_course_ids = list({item.course_id for item in classes_with_course})
+        if not enrolled_course_ids:
+            return {
+                "courses": [],
+                "hint": "你所在班级尚未关联课程，请联系老师",
+            }
+
+        # 学生端课程入口只展示学生已加入班级对应的课程，公共课程模板不直接铺给学生。
+        query = db.query(Course).filter(Course.id.in_(enrolled_course_ids))
         if keyword:
             query = query.filter(Course.name.contains(keyword))
         courses = query.order_by(Course.id.desc()).all()
         return {
             "courses": [_format_course(db, course, current_user) for course in courses],
-            "hint": None,
+            "hint": None if courses else "未找到匹配的课程",
         }
 
     courses = list_courses(db, keyword=keyword)
