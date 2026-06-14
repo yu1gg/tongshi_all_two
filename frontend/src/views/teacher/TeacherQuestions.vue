@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { createQuestion, deleteQuestion, downloadQuestionTemplate, getQuestions, importQuestions, updateQuestion, type Question } from '@/api/question'
+import { createQuestion, deleteQuestion, downloadQuestionTemplate, getQuestions, importQuestions, updateQuestion, batchDeleteQuestions, type Question } from '@/api/question'
 import { getCourses, type Course } from '@/api/course'
 
 const courses = ref<Course[]>([])
@@ -22,6 +22,8 @@ const importInput = ref<HTMLInputElement | null>(null)
 const importing = ref(false)
 const importErrors = ref<{ row: number; reason: string }[]>([])
 const importErrorDialogVisible = ref(false)
+const selectedQuestionIds = ref<number[]>([])
+const batchDeleting = ref(false)
 
 const form = reactive({
   course_id: '' as number | '',
@@ -145,6 +147,38 @@ async function handleDelete(row: Question) {
   }
 }
 
+function handleSelectionChange(rows: Question[]) {
+  selectedQuestionIds.value = rows.map(row => row.id)
+}
+
+async function handleBatchDelete() {
+  if (selectedQuestionIds.value.length === 0) return
+  try {
+    await ElMessageBox.confirm(
+      `确定删除选中的 ${selectedQuestionIds.value.length} 道题目？删除后不可恢复。`,
+      '确认批量删除',
+      { type: 'warning', confirmButtonText: '确认删除', cancelButtonText: '取消' },
+    )
+  } catch {
+    return
+  }
+  batchDeleting.value = true
+  try {
+    const result = await batchDeleteQuestions(selectedQuestionIds.value)
+    let msg = `成功删除 ${result.deleted_count} 道题目`
+    if (result.failed_ids.length > 0) {
+      msg += `，${result.failed_ids.length} 道删除失败（可能为同步题目或已不存在）`
+    }
+    ElMessage.success(msg)
+    selectedQuestionIds.value = []
+    await loadQuestions()
+  } catch {
+    ElMessage.error('批量删除失败，请稍后重试')
+  } finally {
+    batchDeleting.value = false
+  }
+}
+
 const templateType = ref<'all' | 'choice' | 'fill' | 'multi_choice'>('all')
 
 function openImport() {
@@ -210,6 +244,7 @@ onMounted(async () => {
     <div class="page-header">
       <h1>题库管理</h1>
       <div class="header-actions">
+        <el-button type="danger" round :disabled="selectedQuestionIds.length === 0" :loading="batchDeleting" @click="handleBatchDelete">删除选中 ({{ selectedQuestionIds.length }})</el-button>
         <el-button round @click="openImport">导入题目</el-button>
         <el-button type="primary" round @click="openNew">新增题目</el-button>
       </div>
@@ -218,7 +253,7 @@ onMounted(async () => {
     <div class="filter-bar">
       <el-input v-model="filterKeyword" placeholder="搜索题干" clearable style="width: 200px" @keyup.enter="loadQuestions" @clear="loadQuestions" />
       <el-select v-model="filterCourse" placeholder="全部课程" clearable style="width: 220px" @change="page = 1; loadQuestions()">
-        <el-option v-for="course in courses" :key="course.id" :label="course.name" :value="course.id" />
+        <el-option v-for="course in writableCourses" :key="course.id" :label="course.name" :value="course.id" />
       </el-select>
       <el-select v-model="filterType" placeholder="全部题型" clearable style="width: 140px" @change="page = 1; loadQuestions()">
         <el-option label="选择题" value="choice" />
@@ -229,7 +264,8 @@ onMounted(async () => {
       <span class="filter-count">共 {{ total }} 题</span>
     </div>
 
-    <el-table :data="questions" stripe style="width: 100%" v-loading="loading">
+    <el-table :data="questions" stripe style="width: 100%" v-loading="loading" @selection-change="handleSelectionChange">
+      <el-table-column type="selection" width="50" :selectable="(row: Question) => !row.is_synced" />
       <el-table-column type="index" label="序号" width="70" />
       <el-table-column label="题干" min-width="260">
         <template #default="{ row }">

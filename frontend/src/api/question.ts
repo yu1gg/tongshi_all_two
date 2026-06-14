@@ -53,6 +53,10 @@ export function deleteQuestion(id: number) {
   return http.delete<any, any>(`/questions/${id}`)
 }
 
+export function batchDeleteQuestions(questionIds: number[]) {
+  return http.post<any, { deleted_count: number; failed_ids: number[] }>('/questions/batch-delete', questionIds)
+}
+
 export function importQuestions(file: File) {
   const formData = new FormData()
   formData.append('file', file)

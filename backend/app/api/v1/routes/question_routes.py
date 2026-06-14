@@ -17,7 +17,7 @@ from app.core.exceptions import BusinessException
 from app.core.upload_validation import validate_upload, ALLOWED_EXCEL_EXTENSIONS, MAX_EXCEL_SIZE
 from app.schemas.common import AuthUser, QuestionCreate, QuestionUpdate, CourseCreateRequest, CourseUpdateRequest
 from app.services.question_service import (
-    list_questions, create_question, update_question, delete_question,
+    list_questions, get_question, create_question, update_question, delete_question,
     get_course_questions, create_course, add_public_course, update_course, delete_course,
     get_course_detail, import_questions_from_excel, can_view_course_questions,
 )
@@ -91,6 +91,56 @@ def remove_question(question_id: int, db: Session = Depends(get_db), current_use
     if not delete_question(db, question_id, current_user.id):
         raise BusinessException(404, "题目不存在")
     return success()
+
+
+@router.post("/batch-delete", summary="批量删除题目", description="教师端：批量删除题目及其关联数据")
+def batch_delete_questions(
+    question_ids: list[int],
+    db: Session = Depends(get_db),
+    current_user: AuthUser = Depends(require_role("teacher")),
+):
+    if not question_ids:
+        raise BusinessException(400, "请选择要删除的题目")
+
+    from app.models.entities import QuizAttempt, Announcement
+    from sqlalchemy import func as sa_func
+
+    deleted_count = 0
+    failed_ids: list[int] = []
+
+    for qid in question_ids:
+        q = get_question(db, qid, current_user.id)
+        if not q:
+            failed_ids.append(qid)
+            continue
+        if q.source_question_id is not None:
+            failed_ids.append(qid)
+            continue
+        try:
+            # 删除关联答题记录
+            db.query(QuizAttempt).filter(QuizAttempt.question_id == qid).delete()
+            # 清理公告中的题目引用
+            anns = db.query(Announcement).filter(
+                sa_func.json_contains(Announcement.question_ids, str(qid))
+            ).all()
+            for ann in anns:
+                if ann.question_ids:
+                    ann.question_ids = [i for i in ann.question_ids if i != qid]
+            db.delete(q)
+            deleted_count += 1
+        except Exception:
+            failed_ids.append(qid)
+
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise BusinessException(500, "批量删除失败")
+
+    return success({
+        "deleted_count": deleted_count,
+        "failed_ids": failed_ids,
+    })
 
 
 @router.get("/courses", summary="课程列表", description="获取所有课程，支持关键词搜索")
