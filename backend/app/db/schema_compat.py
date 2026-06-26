@@ -443,7 +443,7 @@ def ensure_schema_compatibility(engine) -> None:
 
         # courses.description
         if "courses" in table_names:
-            _add_column_if_missing(conn, inspector, "courses", "description", "TEXT DEFAULT ''")
+            _add_column_if_missing(conn, inspector, "courses", "description", "TEXT NULL")
 
 
 def _add_column_if_missing(conn, inspector, table: str, column: str, col_type: str) -> None:
